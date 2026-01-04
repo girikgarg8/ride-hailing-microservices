@@ -1,0 +1,51 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '3.2.5'
+	id 'io.spring.dependency-management' version '1.1.4'
+}
+
+group = 'com.girikgarg'
+version = '0.0.1-SNAPSHOT'
+description = 'Demo service to test Entity Service consumption'
+
+java {
+	sourceCompatibility = '17'
+}
+
+configurations {
+	compileOnly {
+		extendsFrom annotationProcessor
+	}
+}
+
+repositories {
+	mavenLocal()  // ← This allows us to use locally published Entity Service
+	mavenCentral()
+}
+
+dependencies {
+	// ⭐ Import the Entity Service from Maven Local
+	implementation 'com.girikgarg:uber-entity-service:0.0.1-SNAPSHOT'
+	
+	// Spring Boot dependencies
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	
+	// Database
+	runtimeOnly 'com.mysql:mysql-connector-j'
+	
+	// Lombok
+	compileOnly 'org.projectlombok:lombok'
+	annotationProcessor 'org.projectlombok:lombok'
+	
+	// Dev tools
+	developmentOnly 'org.springframework.boot:spring-boot-devtools'
+	
+	// Testing
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}
+

@@ -1,0 +1,121 @@
+### Gradle ###
+.gradle
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+gradle-app.setting
+.gradletasknamecache
+
+### Spring Boot ###
+HELP.md
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+out/
+!**/src/main/**/out/
+!**/src/test/**/out/
+*.log
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+### VS Code ###
+.vscode/
+
+### macOS ###
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+### Windows ###
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+### Linux ###
+*~
+
+### Application Logs ###
+*.log
+logs/
+log/
+*.log.*
+
+### Database ###
+*.db
+*.sqlite
+*.sqlite3
+dump.rdb
+*.sql.backup
+
+### Environment & Config ###
+.env
+.env.local
+.env.*.local
+application-local.properties
+application-local.yml
+application-dev.properties
+application-dev.yml
+*-local.properties
+*-local.yml
+
+### Sensitive Data ###
+secrets/
+credentials/
+*.pem
+*.key
+*.p12
+*.jks
+
+### Temporary Files ###
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+.cache
+
+### Maven Local (if using publishToMavenLocal) ###
+# Don't ignore - just be aware these are cached locally
+# ~/.m2/repository/
+
+### Test Coverage ###
+.coverage
+*.cover
+htmlcov/
+.pytest_cache/
+
+### Package Files ###
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+!gradle/wrapper/gradle-wrapper.jar
