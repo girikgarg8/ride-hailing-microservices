@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Chat Demo</title>
+</head>
+<body>
+    <div>
+        <h2>WebSocket Chat with Rooms & Private Messaging</h2>
+        
+        <div style="margin-bottom: 10px;">
+            <input type="text" id="userId" placeholder="Your User ID (e.g., user1)" />
+            <button onclick="connect()">Connect</button>
+        </div>
+
+        <div style="margin-bottom: 10px;">
+            <input type="text" id="room" placeholder="Enter room name (e.g., room1)" />
+            <button onclick="joinRoom()">Join Room</button>
+        </div>
+
+        <h3>Current Room: <span id="currentRoom">Not joined</span></h3>
+        <h3>Your User ID: <span id="currentUserId">Not set</span></h3>
+
+        <div style="margin-bottom: 10px; border-top: 2px solid #ccc; padding-top: 10px;">
+            <h3>Public Room Message:</h3>
+            <input type="text" id="name" placeholder="Your name" />
+            <input type="text" id="message" placeholder="Message" />
+            <button onclick="submitChat()">Send to Room</button>
+        </div>
+
+        <div style="margin-bottom: 10px; border-top: 2px solid #ccc; padding-top: 10px;">
+            <h3>Private Message:</h3>
+            <input type="text" id="privateName" placeholder="Your name" />
+            <input type="text" id="recipientUserId" placeholder="Recipient User ID (e.g., user2)" />
+            <input type="text" id="privateMessage" placeholder="Private message" />
+            <button onclick="submitPrivateChat()">Send Private</button>
+        </div>
+
+        <h3>Messages:</h3>
+        <ul id="messages"></ul>
+    </div>
+
+    <!-- SockJS and STOMP libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+    
+    <script>
+        var stompClient = null;
+        var currentRoom = null;
+        var currentUserId = null;
+        var roomSubscription = null;
+        var privateSubscription = null;
+
+        function connect() {
+            const userId = document.getElementById("userId").value.trim();
+            
+            if (!userId) {
+                alert("Please enter your User ID first!");
+                return;
+            }
+
+            console.log("Connect button clicked - starting connection...");
+            
+            // Pass userId as query parameter for Spring to identify the user
+            const socket = new SockJS("http://localhost:8080/ws?userId=" + userId);
+            console.log("SockJS socket created with userId:", userId);
+            
+            stompClient = Stomp.over(socket);
+            
+            // Disable STOMP debug logs (removes "undefined" messages)
+            stompClient.debug = null;
+            
+            console.log("STOMP client created");
+            
+            stompClient.connect({}, function (frame) {
+                console.log("connected as user: " + userId);
+                currentUserId = userId;
+                document.getElementById("currentUserId").textContent = userId;
+                alert("Connected as " + userId + "! Now join a room.");
+                
+                // Subscribe to periodic scheduled messages
+                stompClient.subscribe("/topic/scheduled", function(message) {
+                    console.log("📅 Scheduled message:", message.body);
+                });
+            }, function(error) {
+                console.error("Connection error:", error);
+            });
+        }
+
+        function joinRoom() {
+            if (!stompClient || !stompClient.connected) {
+                alert("Please connect to the server first!");
+                return;
+            }
+
+            if (!currentUserId) {
+                alert("User ID not set. Please reconnect!");
+                return;
+            }
+
+            const room = document.getElementById("room").value.trim();
+            
+            if (!room) {
+                alert("Please enter a room name!");
+                return;
+            }
+
+            // Unsubscribe from previous room if any
+            if (roomSubscription) {
+                roomSubscription.unsubscribe();
+                console.log("Unsubscribed from previous room:", currentRoom);
+            }
+
+            // Unsubscribe from previous private messages if any
+            if (privateSubscription) {
+                privateSubscription.unsubscribe();
+                console.log("Unsubscribed from previous private messages");
+            }
+
+            // Clear previous messages
+            document.getElementById("messages").innerHTML = "";
+
+            // Subscribe to public room messages
+            currentRoom = room;
+            roomSubscription = stompClient.subscribe("/topic/message/" + room, function(data) {
+                console.log("Received chat message in room " + room + ":", data);
+                const response = JSON.parse(data.body);
+                displayMessage(response, false); // false = not private
+            });
+
+            // Subscribe to private messages for this user in this room
+            privateSubscription = stompClient.subscribe("/user/queue/privateMessage/" + room, function(data) {
+                console.log("Received PRIVATE message in room " + room + ":", data);
+                const response = JSON.parse(data.body);
+                displayMessage(response, true); // true = private
+            });
+
+            document.getElementById("currentRoom").textContent = room;
+            console.log("Joined room:", room);
+            console.log("Subscribed to private messages at: /user/queue/privateMessage/" + room);
+            alert("Joined room: " + room);
+        }
+
+        function submitChat() {
+            if (!stompClient || !stompClient.connected) {
+                alert("Please connect to the server first!");
+                return;
+            }
+
+            if (!currentRoom) {
+                alert("Please join a room first!");
+                return;
+            }
+
+            console.log("Submit chat button clicked");
+            const name = document.getElementById("name").value;
+            const message = document.getElementById("message").value;
+            
+            if (!name || !message) {
+                alert("Please enter both name and message!");
+                return;
+            }
+            
+            console.log("Sending chat to room " + currentRoom + ":", { name, message });
+            stompClient.send("/app/chat/" + currentRoom, {}, JSON.stringify({ name: name, message: message }));
+            console.log("Chat message sent to server");
+            
+            // Clear message input
+            document.getElementById("message").value = "";
+        }
+
+        function submitPrivateChat() {
+            if (!stompClient || !stompClient.connected) {
+                alert("Please connect to the server first!");
+                return;
+            }
+
+            if (!currentRoom) {
+                alert("Please join a room first!");
+                return;
+            }
+
+            console.log("Submit private chat button clicked");
+            const name = document.getElementById("privateName").value;
+            const recipientUserId = document.getElementById("recipientUserId").value;
+            const message = document.getElementById("privateMessage").value;
+            
+            if (!name || !recipientUserId || !message) {
+                alert("Please enter name, recipient user ID, and message!");
+                return;
+            }
+            
+            console.log("Sending PRIVATE chat to user " + recipientUserId + " in room " + currentRoom);
+            stompClient.send("/app/private/" + currentRoom + "/" + recipientUserId, {}, 
+                JSON.stringify({ name: name, message: message }));
+            console.log("Private message sent to server");
+            
+            // Clear message input
+            document.getElementById("privateMessage").value = "";
+        }
+
+        function displayMessage(data, isPrivate) {
+            const messagesList = document.getElementById("messages");
+            const listItem = document.createElement("li");
+            
+            if (isPrivate) {
+                listItem.style.color = "blue";
+                listItem.style.fontWeight = "bold";
+                listItem.textContent = `🔒 PRIVATE: ${data.name} : ${data.timestamp} - ${data.message}`;
+            } else {
+                listItem.textContent = `${data.name} : ${data.timestamp} - ${data.message}`;
+            }
+            
+            messagesList.appendChild(listItem);
+        }
+    </script>
+</body>
+</html>
+
