@@ -39,8 +39,18 @@ public class RedisLocationServiceImpl implements LocationService {
                     )
             );
             
-            log.debug("Saved location for driver: {} at ({}, {})", driverId, latitude, longitude);
-            return result != null && result > 0;
+            // Redis GEOADD returns: number of NEW elements added
+            // Returns 0 if element already exists (location updated)
+            // Returns 1 if new element added
+            // Returns null on error
+            boolean success = result != null;
+            
+            if (success) {
+                log.debug("Saved location for driver: {} at ({}, {}) [{}]", 
+                        driverId, latitude, longitude, result == 1 ? "new" : "updated");
+            }
+            
+            return success;
         } catch (Exception ex) {
             log.error("Error saving driver location for driverId: {}", driverId, ex);
             return false;

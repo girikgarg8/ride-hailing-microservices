@@ -1,11 +1,11 @@
 meta {
-  name: Add Driver
+  name: Search Nearby Drivers
   type: http
-  seq: 1
+  seq: 2
 }
 
 post {
-  url: http://localhost:7477/api/location/drivers
+  url: {{baseUrl}}{{apiPrefix}}/nearby/drivers
   body: json
   auth: inherit
 }
@@ -16,7 +16,6 @@ headers {
 
 body:json {
   {
-    "driverId": "driver-123",
     "latitude": 28.7041,
     "longitude": 77.1025
   }
@@ -24,4 +23,5 @@ body:json {
 
 settings {
   encodeUrl: false
+  timeout: 0
 }
