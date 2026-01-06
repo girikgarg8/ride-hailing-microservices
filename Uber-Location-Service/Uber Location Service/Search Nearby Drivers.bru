@@ -1,0 +1,27 @@
+meta {
+  name: Search Nearby Drivers
+  type: http
+  seq: 2
+}
+
+post {
+  url: http://localhost:7477/api/location/nearby/drivers
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "latitude": 28.7041,
+    "longitude": 77.1025
+  }
+}
+
+settings {
+  encodeUrl: false
+  timeout: 0
+}
