@@ -6,10 +6,12 @@ plugins {
 
 group = 'com.girikgarg'
 version = '0.0.1-SNAPSHOT'
-description = 'Demo service to test Entity Service consumption'
+description = 'Uber-Booking-Service'
 
 java {
-	sourceCompatibility = '17'
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(17)
+	}
 }
 
 configurations {
@@ -19,34 +21,27 @@ configurations {
 }
 
 repositories {
-	mavenLocal()  // ← This allows us to use locally published Entity Service
 	mavenCentral()
+	mavenLocal() // For uber-entity-service
 }
 
 dependencies {
-	// ⭐ Import the Entity Service from Maven Local
+	// Uber Entity Service - Shared entity models
 	implementation 'com.girikgarg:uber-entity-service:0.0.1-SNAPSHOT'
 	
-	// Spring Boot dependencies
 	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.springframework.boot:spring-boot-starter-websocket'
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-	
-	// Database
-	runtimeOnly 'com.mysql:mysql-connector-j'
-	
-	// Lombok
 	compileOnly 'org.projectlombok:lombok'
-	annotationProcessor 'org.projectlombok:lombok'
-	
-	// Dev tools
 	developmentOnly 'org.springframework.boot:spring-boot-devtools'
-	
-	// Testing
-	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	runtimeOnly 'com.mysql:mysql-connector-j'
+	annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+	annotationProcessor 'org.projectlombok:lombok'
+	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-websocket-test'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 tasks.named('test') {
 	useJUnitPlatform()
 }
-
-

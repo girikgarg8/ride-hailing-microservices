@@ -6,6 +6,7 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface DriverRepository extends JpaRepository<Driver, Long> {
-    // ⭐ Successfully using Driver entity from imported Entity Service!
+    // Successfully using Driver entity from imported Entity Service!
 }
+
 
