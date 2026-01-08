@@ -6,24 +6,23 @@ import com.girikgarg.uberbookingservice.dto.CreateBookingDto;
 import com.girikgarg.uberbookingservice.dto.CreateBookingResponseDto;
 import com.girikgarg.uberbookingservice.dto.DriverLocationDto;
 import com.girikgarg.uberbookingservice.dto.NearbyDriversRequestDto;
+import com.girikgarg.uberbookingservice.dto.UpdateBookingRequestDto;
+import com.girikgarg.uberbookingservice.dto.UpdateBookingResponseDto;
 import com.girikgarg.uberbookingservice.repositories.BookingRepository;
+import com.girikgarg.uberbookingservice.repositories.DriverRepository;
 import com.girikgarg.uberbookingservice.repositories.PassengerRepository;
 import com.girikgarg.uberbookingservice.services.api.BookingService;
 import com.girikgarg.uberentityservice.models.Booking;
 import com.girikgarg.uberentityservice.models.BookingStatus;
+import com.girikgarg.uberentityservice.models.Driver;
 import com.girikgarg.uberentityservice.models.Passenger;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.core.ParameterizedTypeReference;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
 
-import java.sql.Driver;
-import java.util.List;
 import java.util.Optional;
 
 /**
@@ -43,17 +42,20 @@ public class BookingServiceImpl implements BookingService {
 
     private final PassengerRepository passengerRepository;
     private final BookingRepository bookingRepository;
+    private final DriverRepository driverRepository;
     private final RestTemplate restTemplate;
     private final BookingServiceProperties properties;
     private final LocationServiceApi locationServiceApi;
 
     public BookingServiceImpl(PassengerRepository passengerRepository, 
                               BookingRepository bookingRepository,
+                              DriverRepository driverRepository,
                               RestTemplate restTemplate,
                               BookingServiceProperties properties,
                               LocationServiceApi locationServiceApi) {
         this.passengerRepository = passengerRepository;
         this.bookingRepository = bookingRepository;
+        this.driverRepository = driverRepository;
         this.restTemplate = restTemplate;
         this.properties = properties;
         this.locationServiceApi = locationServiceApi;
@@ -101,6 +103,64 @@ public class BookingServiceImpl implements BookingService {
                 .bookingId(savedBooking.getId())
                 .bookingStatus(savedBooking.getBookingStatus())
                 .driver(Optional.ofNullable(savedBooking.getDriver()))
+                .build();
+    }
+
+    /**
+     * Update an existing booking.
+     * Typically called when a driver accepts a ride request.
+     * 
+     * Flow:
+     * 1. Validate booking exists
+     * 2. Validate driver exists (if provided)
+     * 3. Update booking status and driver
+     * 4. Save and return updated booking
+     */
+    @Override
+    public UpdateBookingResponseDto update(UpdateBookingRequestDto requestDto, Long bookingId) {
+        log.info("Updating booking {} with status: {}", bookingId, requestDto.getStatus());
+        
+        // 1. Validate booking exists
+        Optional<Booking> bookingOpt = bookingRepository.findById(bookingId);
+        if (bookingOpt.isEmpty()) {
+            log.error("Booking not found: {}", bookingId);
+            throw new RuntimeException("Booking not found with ID: " + bookingId);
+        }
+        
+        Booking booking = bookingOpt.get();
+        log.info("Found booking: {} with current status: {}", booking.getId(), booking.getBookingStatus());
+        
+        // 2. Update booking status
+        booking.setBookingStatus(requestDto.getStatus());
+        
+        // 3. Update driver if provided
+        if (requestDto.getDriverId() != null && requestDto.getDriverId().isPresent()) {
+            Long driverId = requestDto.getDriverId().get();
+            log.info("Assigning driver {} to booking {}", driverId, bookingId);
+            
+            Optional<Driver> driverOpt = driverRepository.findById(driverId);
+            if (driverOpt.isEmpty()) {
+                log.error("Driver not found: {}", driverId);
+                throw new RuntimeException("Driver not found with ID: " + driverId);
+            }
+            
+            Driver driver = driverOpt.get();
+            booking.setDriver(driver);
+            log.info("Driver {} assigned to booking {}", driver.getId(), booking.getId());
+        } else {
+            log.info("No driver change requested for booking {}", bookingId);
+        }
+        
+        // 4. Save updated booking
+        Booking updatedBooking = bookingRepository.save(booking);
+        log.info("Booking {} updated successfully with status: {}", 
+                updatedBooking.getId(), updatedBooking.getBookingStatus());
+        
+        // 5. Return response
+        return UpdateBookingResponseDto.builder()
+                .bookingId(updatedBooking.getId())
+                .status(updatedBooking.getBookingStatus())
+                .driver(Optional.ofNullable(updatedBooking.getDriver()))
                 .build();
     }
 
