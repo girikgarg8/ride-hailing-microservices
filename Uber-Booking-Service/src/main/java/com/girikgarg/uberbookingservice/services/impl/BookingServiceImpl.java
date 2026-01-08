@@ -1,5 +1,6 @@
 package com.girikgarg.uberbookingservice.services.impl;
 
+import com.girikgarg.uberbookingservice.apis.LocationServiceApi;
 import com.girikgarg.uberbookingservice.configuration.BookingServiceProperties;
 import com.girikgarg.uberbookingservice.dto.CreateBookingDto;
 import com.girikgarg.uberbookingservice.dto.CreateBookingResponseDto;
@@ -17,7 +18,11 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
+import java.sql.Driver;
 import java.util.List;
 import java.util.Optional;
 
@@ -40,15 +45,18 @@ public class BookingServiceImpl implements BookingService {
     private final BookingRepository bookingRepository;
     private final RestTemplate restTemplate;
     private final BookingServiceProperties properties;
+    private final LocationServiceApi locationServiceApi;
 
     public BookingServiceImpl(PassengerRepository passengerRepository, 
                               BookingRepository bookingRepository,
                               RestTemplate restTemplate,
-                              BookingServiceProperties properties) {
+                              BookingServiceProperties properties,
+                              LocationServiceApi locationServiceApi) {
         this.passengerRepository = passengerRepository;
         this.bookingRepository = bookingRepository;
         this.restTemplate = restTemplate;
         this.properties = properties;
+        this.locationServiceApi = locationServiceApi;
     }
 
     @Override
@@ -76,7 +84,7 @@ public class BookingServiceImpl implements BookingService {
         Booking savedBooking = bookingRepository.save(booking);
         log.info("Booking created with ID: {} and status: {}", savedBooking.getId(), savedBooking.getBookingStatus());
 
-        // 3. Call Location Service to fetch nearby drivers
+        // 3. Call Location Service to fetch nearby drivers asynchronously using Retrofit
         NearbyDriversRequestDto request = NearbyDriversRequestDto.builder()
                 .latitude(bookingDetails.getStartLocation().getLatitude())
                 .longitude(bookingDetails.getStartLocation().getLongitude())
@@ -84,39 +92,41 @@ public class BookingServiceImpl implements BookingService {
 
         log.info("Fetching nearby drivers for location: ({}, {})", 
                 request.getLatitude(), request.getLongitude());
+        
+        // Async call - won't block booking creation
+        processNearbyDriversAsync(request);
 
-        try {
-            // Using exchange() for better type handling with Lists
-            ResponseEntity<List<DriverLocationDto>> response = restTemplate.exchange(
-                    properties.getLocationServiceUrl() + "/api/location/nearby/drivers",
-                    HttpMethod.POST,
-                    new org.springframework.http.HttpEntity<>(request),
-                    new ParameterizedTypeReference<List<DriverLocationDto>>() {}
-            );
-
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                List<DriverLocationDto> nearbyDrivers = response.getBody();
-                log.info("Found {} nearby drivers", nearbyDrivers.size());
-                
-                // 4. Log available drivers (Future: Send ride request via WebSocket)
-                nearbyDrivers.forEach(driver -> {
-                    log.info("Driver {} at location: ({}, {})", 
-                            driver.getDriverId(), 
-                            driver.getLatitude(), 
-                            driver.getLongitude());
-                });
-            } else {
-                log.warn("No nearby drivers found or service error");
-            }
-        } catch (Exception ex) {
-            log.error("Error calling Location Service: {}", ex.getMessage(), ex);
-        }
-
-        // 5. Return booking response (driver will be null until assigned)
+        // 4. Return booking response (driver will be null until assigned)
         return CreateBookingResponseDto.builder()
                 .bookingId(savedBooking.getId())
                 .bookingStatus(savedBooking.getBookingStatus())
                 .driver(Optional.ofNullable(savedBooking.getDriver()))
                 .build();
+    }
+
+    private void processNearbyDriversAsync(NearbyDriversRequestDto requestDto) {
+        Call<DriverLocationDto[]> call = locationServiceApi.getNearbyDrivers(requestDto);
+        call.enqueue(new Callback<DriverLocationDto[]>() {
+            @Override
+            public void onResponse(Call<DriverLocationDto[]> call, Response<DriverLocationDto[]> response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    DriverLocationDto[] nearbyDrivers = response.body();
+                    log.info("Found {} nearby drivers", nearbyDrivers.length);
+                    
+                    // Log available drivers (Future: Send ride request via WebSocket)
+                    for (DriverLocationDto driver : nearbyDrivers) {
+                        log.info("Driver {} at location: ({}, {})", 
+                                driver.getDriverId(), 
+                                driver.getLatitude(), 
+                                driver.getLongitude());
+                    }
+                }
+            }
+
+            @Override
+            public void onFailure(Call<DriverLocationDto[]> call, Throwable t) {
+                log.error("Failed to fetch nearby drivers: {}", t.getMessage(), t);
+            }
+        });
     }
 }
