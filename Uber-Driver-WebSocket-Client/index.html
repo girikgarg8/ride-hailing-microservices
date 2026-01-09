@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Uber Driver - Ride Requests</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #000;
+            margin-bottom: 10px;
+        }
+        
+        .status {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+        
+        .status.connected {
+            background-color: #4CAF50;
+            color: white;
+        }
+        
+        .status.disconnected {
+            background-color: #f44336;
+            color: white;
+        }
+        
+        .driver-info {
+            background-color: #f9f9f9;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        
+        .driver-info input {
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-right: 10px;
+            width: 200px;
+        }
+        
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        .btn-primary {
+            background-color: #000;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background-color: #333;
+        }
+        
+        .btn-success {
+            background-color: #4CAF50;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background-color: #45a049;
+        }
+        
+        .btn-danger {
+            background-color: #f44336;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background-color: #da190b;
+        }
+        
+        .ride-requests {
+            margin-top: 30px;
+        }
+        
+        .ride-request {
+            background-color: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 5px;
+            padding: 20px;
+            margin-bottom: 15px;
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .ride-request h3 {
+            margin-top: 0;
+            color: #856404;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .ride-request .details {
+            margin: 15px 0;
+            line-height: 1.8;
+        }
+        
+        .ride-request .details strong {
+            display: inline-block;
+            width: 120px;
+        }
+        
+        .ride-request .actions {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+        }
+        
+        .no-requests {
+            text-align: center;
+            color: #999;
+            padding: 40px;
+            font-size: 18px;
+        }
+        
+        .location {
+            font-family: monospace;
+            background-color: #f0f0f0;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚗 Uber Driver Portal</h1>
+        <span id="connectionStatus" class="status disconnected">Disconnected</span>
+        
+        <div class="driver-info">
+            <h3>Driver Connection</h3>
+            <input type="text" id="driverId" placeholder="Enter Driver ID (e.g., driver1)" />
+            <button class="btn-primary" onclick="connect()" id="connectBtn">Go Online</button>
+            <button class="btn-danger" onclick="disconnect()" style="display: none;" id="disconnectBtn">Go Offline</button>
+        </div>
+        
+        <div class="ride-requests">
+            <h2>📍 Incoming Ride Requests</h2>
+            <div id="requestsList">
+                <div class="no-requests">
+                    🔄 Waiting for ride requests...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SockJS and STOMP libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+    
+    <script>
+        var stompClient = null;
+        var currentDriverId = null;
+        var rideRequestSubscription = null;
+
+        function connect() {
+            const driverId = document.getElementById("driverId").value.trim();
+            
+            if (!driverId) {
+                alert("⚠️ Please enter your Driver ID!");
+                return;
+            }
+
+            console.log("🔌 Connecting driver:", driverId);
+            
+            // Connect to WebSocket server with driver ID
+            const socket = new SockJS("http://localhost:8080/ws?userId=" + driverId);
+            stompClient = Stomp.over(socket);
+            
+            // Disable STOMP debug logs
+            stompClient.debug = null;
+            
+            stompClient.connect({}, function (frame) {
+                console.log("✅ Connected as driver:", driverId);
+                currentDriverId = driverId;
+                
+                // Update UI
+                document.getElementById("connectionStatus").textContent = "Online - " + driverId;
+                document.getElementById("connectionStatus").className = "status connected";
+                document.getElementById("driverId").disabled = true;
+                document.getElementById("connectBtn").style.display = "none";
+                document.getElementById("disconnectBtn").style.display = "inline-block";
+                
+                // Subscribe to ride requests
+                subscribeToRideRequests();
+                
+                console.log("🎧 Subscribed to /topic/rideRequest");
+                alert("✅ You're now online and ready to receive ride requests!");
+                
+            }, function(error) {
+                console.error("❌ Connection error:", error);
+                alert("❌ Failed to connect. Make sure the WebSocket server is running on port 8080.");
+            });
+        }
+
+        function subscribeToRideRequests() {
+            // Subscribe to public ride request topic
+            rideRequestSubscription = stompClient.subscribe("/topic/rideRequest", function(message) {
+                console.log("🚨 New ride request received:", message.body);
+                const rideRequest = JSON.parse(message.body);
+                displayRideRequest(rideRequest);
+            });
+        }
+
+        function disconnect() {
+            if (stompClient && stompClient.connected) {
+                stompClient.disconnect(function() {
+                    console.log("🔴 Disconnected");
+                    resetUI();
+                });
+            } else {
+                resetUI();
+            }
+        }
+
+        function resetUI() {
+            document.getElementById("connectionStatus").textContent = "Disconnected";
+            document.getElementById("connectionStatus").className = "status disconnected";
+            document.getElementById("driverId").disabled = false;
+            document.getElementById("connectBtn").style.display = "inline-block";
+            document.getElementById("disconnectBtn").style.display = "none";
+            document.getElementById("requestsList").innerHTML = '<div class="no-requests">🔄 Waiting for ride requests...</div>';
+            currentDriverId = null;
+        }
+
+        function displayRideRequest(request) {
+            const requestsList = document.getElementById("requestsList");
+            
+            // Remove "no requests" message if it exists
+            const noRequestsMsg = requestsList.querySelector(".no-requests");
+            if (noRequestsMsg) {
+                noRequestsMsg.remove();
+            }
+            
+            // Create ride request card
+            const requestDiv = document.createElement("div");
+            requestDiv.className = "ride-request";
+            requestDiv.id = "request-" + request.bookingId;
+            
+            requestDiv.innerHTML = `
+                <h3>🚨 New Ride Request #${request.bookingId}</h3>
+                <div class="details">
+                    <div><strong>Booking ID:</strong> ${request.bookingId}</div>
+                    <div><strong>Passenger ID:</strong> ${request.passengerId}</div>
+                    <div><strong>Pickup:</strong> <span class="location">${request.startLatitude}, ${request.startLongitude}</span></div>
+                    <div><strong>Dropoff:</strong> <span class="location">${request.endLatitude}, ${request.endLongitude}</span></div>
+                    <div><strong>Status:</strong> ${request.bookingStatus}</div>
+                </div>
+                <div class="actions">
+                    <button class="btn-success" onclick="acceptRide(${request.bookingId})">✅ Accept Ride</button>
+                    <button class="btn-danger" onclick="rejectRide(${request.bookingId})">❌ Reject</button>
+                </div>
+            `;
+            
+            // Add to top of list (newest first)
+            requestsList.insertBefore(requestDiv, requestsList.firstChild);
+            
+            // Play notification sound (optional)
+            playNotificationSound();
+        }
+
+        function acceptRide(bookingId) {
+            if (!stompClient || !stompClient.connected) {
+                alert("⚠️ Not connected to server!");
+                return;
+            }
+
+            if (!currentDriverId) {
+                alert("⚠️ Driver ID not set!");
+                return;
+            }
+
+            console.log("✅ Driver accepting ride:", bookingId);
+            
+            // Send acceptance via WebSocket to Socket Service
+            // Socket Service will handle forwarding to Booking Service
+            const rideResponse = {
+                response: true,
+                bookingId: bookingId,
+                driverId: 2  // Using actual driver ID from database (John Driver)
+            };
+            
+            stompClient.send("/app/rideResponse", {}, JSON.stringify(rideResponse));
+            console.log("📡 Sent ride acceptance to Socket Service:", rideResponse);
+            
+            // Update UI immediately
+            const requestDiv = document.getElementById("request-" + bookingId);
+            if (requestDiv) {
+                requestDiv.style.backgroundColor = "#d4edda";
+                requestDiv.style.borderColor = "#c3e6cb";
+                requestDiv.querySelector("h3").textContent = "✅ Accepted - Ride #" + bookingId;
+                requestDiv.querySelector(".actions").innerHTML = '<strong style="color: #155724;">You accepted this ride! Processing...</strong>';
+            }
+            
+            alert("✅ Ride #" + bookingId + " accepted! Socket Service is processing your response.");
+        }
+
+        function rejectRide(bookingId) {
+            if (!stompClient || !stompClient.connected) {
+                alert("⚠️ Not connected to server!");
+                return;
+            }
+
+            if (!currentDriverId) {
+                alert("⚠️ Driver ID not set!");
+                return;
+            }
+
+            console.log("❌ Driver rejecting ride:", bookingId);
+            
+            // Send rejection via WebSocket to Socket Service
+            const rideResponse = {
+                response: false,
+                bookingId: bookingId,
+                driverId: currentDriverId
+            };
+            
+            stompClient.send("/app/rideResponse", {}, JSON.stringify(rideResponse));
+            console.log("📡 Sent ride rejection to Socket Service:", rideResponse);
+            
+            // Update UI
+            const requestDiv = document.getElementById("request-" + bookingId);
+            if (requestDiv) {
+                requestDiv.style.opacity = "0.5";
+                requestDiv.style.backgroundColor = "#f8d7da";
+                requestDiv.style.borderColor = "#f5c6cb";
+                requestDiv.querySelector("h3").textContent = "❌ Rejected - Ride #" + bookingId;
+                requestDiv.querySelector(".actions").innerHTML = '<strong style="color: #721c24;">You rejected this ride</strong>';
+            }
+            
+            alert("❌ Ride #" + bookingId + " rejected.");
+        }
+
+        function playNotificationSound() {
+            // Optional: Play a sound when new request arrives
+            // You can add an audio element or use Web Audio API
+            console.log("🔔 Notification sound would play here");
+        }
+
+        // Cleanup on page unload
+        window.addEventListener("beforeunload", function() {
+            if (stompClient && stompClient.connected) {
+                stompClient.disconnect();
+            }
+        });
+    </script>
+</body>
+</html>
+
