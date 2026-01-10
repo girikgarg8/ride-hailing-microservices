@@ -1,4 +1,4 @@
-package com.girikgarg.uberclientsocketservice;
+package com.girikgarg.ubersocketservice;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;

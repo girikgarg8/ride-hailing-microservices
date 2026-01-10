@@ -1,7 +1,8 @@
-package com.girikgarg.uberclientsocketservice.controller;
+package com.girikgarg.ubersocketservice.controller;
 
-import com.girikgarg.uberclientsocketservice.dto.RideRequestDto;
-import com.girikgarg.uberclientsocketservice.dto.RideResponseDto;
+import com.girikgarg.ubersocketservice.dto.RideRequestDto;
+import com.girikgarg.ubersocketservice.dto.RideResponseDto;
+import com.girikgarg.ubersocketservice.producers.KafkaProducerService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
@@ -35,13 +36,57 @@ public class DriverRequestController {
     
     private final SimpMessagingTemplate simpMessagingTemplate;
     private final RestTemplate restTemplate;
+    private final KafkaProducerService kafkaProducerService;
     
     @Value("${booking.service.url:http://localhost:7475}")
     private String bookingServiceUrl;
 
-    public DriverRequestController(SimpMessagingTemplate simpMessagingTemplate, RestTemplate restTemplate) {
+    public DriverRequestController(SimpMessagingTemplate simpMessagingTemplate, 
+                                   RestTemplate restTemplate,
+                                   KafkaProducerService kafkaProducerService) {
         this.simpMessagingTemplate = simpMessagingTemplate;
         this.restTemplate = restTemplate;
+        this.kafkaProducerService = kafkaProducerService;
+    }
+    
+    /**
+     * Test endpoint to verify Kafka integration.
+     * Publishes a test message to the 'sample' topic.
+     * 
+     * @return Success response
+     */
+    @GetMapping("/test")
+    public ResponseEntity<Map<String, String>> testKafka() {
+        log.info("Test endpoint called - publishing message to Kafka");
+        kafkaProducerService.publishMessage("sample", "Hello");
+        
+        Map<String, String> response = new HashMap<>();
+        response.put("status", "success");
+        response.put("message", "Message 'Hello' published to 'sample' topic");
+        return ResponseEntity.ok(response);
+    }
+    
+    /**
+     * Test endpoint to simulate driver accepting a ride.
+     * Directly publishes ride acceptance event to Kafka.
+     * 
+     * @param bookingId Booking ID
+     * @param driverId Driver ID
+     * @return Success response
+     */
+    @PostMapping("/test-ride-acceptance")
+    public ResponseEntity<Map<String, String>> testRideAcceptance(
+            @RequestParam Long bookingId,
+            @RequestParam Long driverId) {
+        log.info("Test ride acceptance endpoint called. Booking ID: {}, Driver ID: {}", bookingId, driverId);
+        publishRideAcceptedEvent(bookingId, driverId);
+        
+        Map<String, String> response = new HashMap<>();
+        response.put("status", "success");
+        response.put("message", "Ride acceptance event published to Kafka");
+        response.put("bookingId", String.valueOf(bookingId));
+        response.put("driverId", String.valueOf(driverId));
+        return ResponseEntity.ok(response);
     }
 
     /**
@@ -75,10 +120,9 @@ public class DriverRequestController {
                 rideResponseDto.getResponse() ? "ACCEPTED" : "REJECTED");
         
         if (rideResponseDto.getResponse()) {
-            // Driver accepted - update booking via Booking Service
-            // Convert userId from String to Long
+            // Driver accepted - publish event to Kafka
             Long driverId = Long.parseLong(userId);
-            updateBookingWithDriver(rideResponseDto.getBookingId(), driverId);
+            publishRideAcceptedEvent(rideResponseDto.getBookingId(), driverId);
         } else {
             // Driver rejected - just log it (or implement rejection logic)
             log.info("Driver {} rejected booking {}", userId, rideResponseDto.getBookingId());
@@ -91,13 +135,29 @@ public class DriverRequestController {
     }
     
     /**
-     * Calls Booking Service to update booking with driver assignment.
+     * Publishes ride acceptance event to Kafka.
+     * Booking Service will consume this event and update the database.
+     * 
+     * @param bookingId The booking ID
+     * @param driverId The driver ID who accepted the ride
      */
+    private void publishRideAcceptedEvent(Long bookingId, Long driverId) {
+        String message = String.format("{\"bookingId\":%d,\"driverId\":%d}", bookingId, driverId);
+        log.info("Publishing ride accepted event to Kafka. Booking ID: {}, Driver ID: {}", bookingId, driverId);
+        kafkaProducerService.publishMessage("ride-accepted", message);
+        log.info("Ride accepted event published successfully");
+    }
+    
+    /**
+     * OLD METHOD - Replaced by Kafka event-driven approach
+     * Previously used to call Booking Service directly via HTTP.
+     * Now we publish to Kafka instead for better decoupling.
+     */
+    /*
     private void updateBookingWithDriver(Long bookingId, Long driverId) {
         try {
             String url = bookingServiceUrl + "/api/v1/bookings/" + bookingId;
             
-            // Prepare request body
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("status", "SCHEDULED");
             requestBody.put("driverId", Optional.of(driverId));
@@ -118,13 +178,13 @@ public class DriverRequestController {
             
             log.info("Booking Service update successful. Status: {}, Booking ID: {}", 
                     response.getStatusCode(), bookingId);
-            log.debug("Booking Service response body: {}", response.getBody());
             
         } catch (Exception e) {
             log.error("Failed to update Booking Service for booking ID: {}. Error: {}", 
                     bookingId, e.getMessage(), e);
         }
     }
+    */
 
     /**
      * Broadcasts ride request to all connected drivers via WebSocket.

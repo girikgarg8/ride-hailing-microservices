@@ -39,6 +39,9 @@ dependencies {
 	
 	// Apache HttpClient for PATCH method support
 	implementation 'org.apache.httpcomponents.client5:httpclient5:5.2.1'
+	
+	// Spring Kafka for event-driven messaging
+	implementation 'org.springframework.kafka:spring-kafka'
 }
 
 tasks.named('test') {

@@ -1,4 +1,4 @@
-package com.girikgarg.uberclientsocketservice.configuration;
+package com.girikgarg.ubersocketservice.configuration;
 
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;

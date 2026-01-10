@@ -1,4 +1,4 @@
-package com.girikgarg.uberclientsocketservice.dto;
+package com.girikgarg.ubersocketservice.dto;
 
 import lombok.*;
 

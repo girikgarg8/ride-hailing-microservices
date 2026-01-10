@@ -1,9 +1,9 @@
-package com.girikgarg.uberclientsocketservice.controller;
+package com.girikgarg.ubersocketservice.controller;
 
-import com.girikgarg.uberclientsocketservice.dto.ChatRequest;
-import com.girikgarg.uberclientsocketservice.dto.ChatResponse;
-import com.girikgarg.uberclientsocketservice.dto.TestRequest;
-import com.girikgarg.uberclientsocketservice.dto.TestResponse;
+import com.girikgarg.ubersocketservice.dto.ChatRequest;
+import com.girikgarg.ubersocketservice.dto.ChatResponse;
+import com.girikgarg.ubersocketservice.dto.TestRequest;
+import com.girikgarg.ubersocketservice.dto.TestResponse;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.SendTo;

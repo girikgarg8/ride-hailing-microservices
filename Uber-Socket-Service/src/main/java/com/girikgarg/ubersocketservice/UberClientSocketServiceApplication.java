@@ -1,4 +1,4 @@
-package com.girikgarg.uberclientsocketservice;
+package com.girikgarg.ubersocketservice;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
