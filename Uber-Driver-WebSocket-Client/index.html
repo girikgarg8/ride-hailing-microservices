@@ -165,7 +165,7 @@
         
         <div class="driver-info">
             <h3>Driver Connection</h3>
-            <input type="text" id="driverId" placeholder="Enter Driver ID (e.g., driver1)" />
+            <input type="number" id="driverId" placeholder="Enter Driver ID (e.g., 1, 2, 3)" min="1" />
             <button class="btn-primary" onclick="connect()" id="connectBtn">Go Online</button>
             <button class="btn-danger" onclick="disconnect()" style="display: none;" id="disconnectBtn">Go Offline</button>
         </div>
@@ -312,11 +312,11 @@
             // Socket Service will handle forwarding to Booking Service
             const rideResponse = {
                 response: true,
-                bookingId: bookingId,
-                driverId: 2  // Using actual driver ID from database (John Driver)
+                bookingId: bookingId
             };
             
-            stompClient.send("/app/rideResponse", {}, JSON.stringify(rideResponse));
+            // Send to /app/rideResponse/{userId} - userId is extracted from path
+            stompClient.send("/app/rideResponse/" + currentDriverId, {}, JSON.stringify(rideResponse));
             console.log("📡 Sent ride acceptance to Socket Service:", rideResponse);
             
             // Update UI immediately
@@ -347,11 +347,11 @@
             // Send rejection via WebSocket to Socket Service
             const rideResponse = {
                 response: false,
-                bookingId: bookingId,
-                driverId: currentDriverId
+                bookingId: bookingId
             };
             
-            stompClient.send("/app/rideResponse", {}, JSON.stringify(rideResponse));
+            // Send to /app/rideResponse/{userId} - userId is extracted from path
+            stompClient.send("/app/rideResponse/" + currentDriverId, {}, JSON.stringify(rideResponse));
             console.log("📡 Sent ride rejection to Socket Service:", rideResponse);
             
             // Update UI

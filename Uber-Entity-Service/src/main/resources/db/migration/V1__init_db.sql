@@ -46,3 +46,4 @@ ALTER TABLE booking
     ADD CONSTRAINT FK_BOOKING_ON_PASSENGER FOREIGN KEY (passenger_id) REFERENCES passenger (id);
 
 
+

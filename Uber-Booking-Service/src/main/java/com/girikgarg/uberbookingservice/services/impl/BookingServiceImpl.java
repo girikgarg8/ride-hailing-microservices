@@ -24,6 +24,7 @@ import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
 
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -218,11 +219,11 @@ public class BookingServiceImpl implements BookingService {
         log.info("   Booking ID: {}, Passenger ID: {}", booking.getId(), booking.getPassenger().getId());
         
         // Make async call to Socket Service using Retrofit
-        Call<String> call = uberSocketApi.raiseRideRequest(rideRequest);
-        call.enqueue(new Callback<String>() {
+        Call<Map<String, String>> call = uberSocketApi.raiseRideRequest(rideRequest);
+        call.enqueue(new Callback<Map<String, String>>() {
             @Override
-            public void onResponse(Call<String> call, Response<String> response) {
-                if (response.isSuccessful()) {
+            public void onResponse(Call<Map<String, String>> call, Response<Map<String, String>> response) {
+                if (response.isSuccessful() && response.body() != null) {
                     log.info("✅ Socket Service responded successfully: {}", response.code());
                     log.info("   Response: {}", response.body());
                 } else {
@@ -231,7 +232,7 @@ public class BookingServiceImpl implements BookingService {
             }
 
             @Override
-            public void onFailure(Call<String> call, Throwable t) {
+            public void onFailure(Call<Map<String, String>> call, Throwable t) {
                 log.error("❌ Failed to send ride request to Socket Service: {}", t.getMessage(), t);
             }
         });

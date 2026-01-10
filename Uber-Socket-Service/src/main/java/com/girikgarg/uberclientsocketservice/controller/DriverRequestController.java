@@ -5,6 +5,7 @@ import com.girikgarg.uberclientsocketservice.dto.RideResponseDto;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
+import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
@@ -50,31 +51,37 @@ public class DriverRequestController {
      * @return ResponseEntity with success message
      */
     @PostMapping("/newride")
-    public ResponseEntity<String> raiseRideRequest(@RequestBody RideRequestDto requestDto) {
+    public ResponseEntity<Map<String, String>> raiseRideRequest(@RequestBody RideRequestDto requestDto) {
         log.info("Received ride request for booking ID: {}", requestDto.getBookingId());
         sendDriversNewRideRequest(requestDto);
-        return ResponseEntity.ok("Ride request broadcast to drivers");
+        Map<String, String> response = new HashMap<>();
+        response.put("message", "Ride request broadcast to drivers");
+        response.put("bookingId", String.valueOf(requestDto.getBookingId()));
+        return ResponseEntity.ok(response);
     } 
 
     /**
      * Endpoint called by driver client when driver accepts or rejects a ride.
      * Handles the business logic of forwarding the response to Booking Service.
      * 
-     * @param rideResponseDto Contains response (true/false), bookingId, driverId
+     * @param userId The driver ID extracted from the WebSocket destination path
+     * @param rideResponseDto Contains response (true/false), bookingId
      */
-    @MessageMapping("/rideResponse")
-    public void rideResponseHandler(RideResponseDto rideResponseDto) {
-        log.info("Received ride response from driver. Booking ID: {}, Driver ID: {}, Response: {}", 
-                rideResponseDto.getBookingId(), 
-                rideResponseDto.getDriverId(),
+    @MessageMapping("/rideResponse/{userId}")
+    public synchronized void rideResponseHandler(@DestinationVariable String userId, RideResponseDto rideResponseDto) {
+        log.info("Received ride response from driver {}. Booking ID: {}, Response: {}", 
+                userId,
+                rideResponseDto.getBookingId(),
                 rideResponseDto.getResponse() ? "ACCEPTED" : "REJECTED");
         
         if (rideResponseDto.getResponse()) {
             // Driver accepted - update booking via Booking Service
-            updateBookingWithDriver(rideResponseDto.getBookingId(), rideResponseDto.getDriverId());
+            // Convert userId from String to Long
+            Long driverId = Long.parseLong(userId);
+            updateBookingWithDriver(rideResponseDto.getBookingId(), driverId);
         } else {
             // Driver rejected - just log it (or implement rejection logic)
-            log.info("Driver {} rejected booking {}", rideResponseDto.getDriverId(), rideResponseDto.getBookingId());
+            log.info("Driver {} rejected booking {}", userId, rideResponseDto.getBookingId());
         }
         
         // Broadcast response to subscribers (for real-time updates)
