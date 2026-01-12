@@ -1,0 +1,61 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.2.5'
+    id 'io.spring.dependency-management' version '1.1.4'
+}
+
+group = 'com.girikgarg'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    sourceCompatibility = '17'
+}
+
+configurations {
+    compileOnly {
+        extendsFrom annotationProcessor
+    }
+}
+
+repositories {
+    mavenCentral()
+    mavenLocal() // For Uber-Entity-Service
+}
+
+dependencies {
+    // Uber Entity Service (contains Review, Booking, Driver, Passenger models)
+    implementation 'com.girikgarg:uber-entity-service:0.0.1-SNAPSHOT'
+    
+    // Spring Boot Starters
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    
+    // Spring Cloud (for Eureka client)
+    implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client:4.1.1'
+    implementation 'org.springframework.cloud:spring-cloud-starter-loadbalancer:4.1.2'
+    implementation 'org.springframework.cloud:spring-cloud-starter:4.1.2'
+    
+    // Database
+    runtimeOnly 'com.mysql:mysql-connector-j'
+    
+    // Flyway for database migrations
+    implementation 'org.flywaydb:flyway-mysql:9.22.3'
+    implementation 'org.flywaydb:flyway-core:9.22.3'
+    
+    // Lombok
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    
+    // Development
+    developmentOnly 'org.springframework.boot:spring-boot-devtools'
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+    
+    // Testing
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
