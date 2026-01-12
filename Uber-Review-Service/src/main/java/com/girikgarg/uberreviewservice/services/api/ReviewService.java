@@ -1,7 +1,17 @@
+package com.girikgarg.uberreviewservice.services.api;
+
+import com.girikgarg.uberentityservice.models.Review;
+import com.girikgarg.uberreviewservice.dtos.CreateReviewRequestDto;
+
+import java.util.List;
+import java.util.Optional;
+
 public interface ReviewService {
-    public Optional <Review> findReviewById(Long id);
+    Review createReview(CreateReviewRequestDto requestDto);
 
-    public List <Review> findAllReviews();
+    Optional<Review> findReviewById(Long id);
 
-    public boolean deleteReviewById(Long id);
+    List<Review> findAllReviews();
+
+    boolean deleteReviewById(Long id);
 }  
