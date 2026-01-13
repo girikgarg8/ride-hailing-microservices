@@ -29,7 +29,7 @@ public class Passenger extends BaseModel {
     private String email;
 
     @Column(nullable = false)
-    private String password;
+    private String password; // hashed password
 
     @OneToMany(mappedBy = "passenger")
     @Builder.Default
