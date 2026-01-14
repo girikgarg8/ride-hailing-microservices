@@ -1,5 +1,7 @@
 package com.girikgarg.uberauthservice.controllers;
 
+import com.girikgarg.uberauthservice.dto.PassengerSigninRequestDto;
+import com.girikgarg.uberauthservice.dto.PassengerSigninResponseDto;
 import com.girikgarg.uberauthservice.dto.PassengerSignupRequestDto;
 import com.girikgarg.uberauthservice.dto.PassengerSignupResponseDto;
 import com.girikgarg.uberauthservice.services.api.AuthService;
@@ -27,5 +29,12 @@ public class AuthController {
         log.info("Received passenger signup request for email: {}", passengerSignupRequestDto.getEmail());
         PassengerSignupResponseDto responseDto = authService.signupPassenger(passengerSignupRequestDto);
         return new ResponseEntity<>(responseDto, HttpStatus.CREATED);
+    }
+    
+    @PostMapping("/signin/passenger")
+    public ResponseEntity<PassengerSigninResponseDto> signIn(@RequestBody PassengerSigninRequestDto passengerSigninRequestDto) {
+        log.info("Received passenger signin request for email: {}", passengerSigninRequestDto.getEmail());
+        PassengerSigninResponseDto responseDto = authService.signinPassenger(passengerSigninRequestDto);
+        return ResponseEntity.ok(responseDto);
     }
 }
