@@ -5,9 +5,17 @@ import com.girikgarg.uberauthservice.dto.PassengerSigninResponseDto;
 import com.girikgarg.uberauthservice.dto.PassengerSignupRequestDto;
 import com.girikgarg.uberauthservice.dto.PassengerSignupResponseDto;
 import com.girikgarg.uberauthservice.services.api.AuthService;
+import com.girikgarg.uberauthservice.utils.JWTUtil;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 /**
@@ -18,10 +26,17 @@ import org.springframework.web.bind.annotation.*;
 @Slf4j
 public class AuthController {
     
-    private final AuthService authService;
+    @Value("${cookie.expiry}")
+    private int cookieExpiry;
 
-    public AuthController(AuthService authService) {
+    private final AuthService authService;
+    private final AuthenticationManager authenticationManager;
+    private final JWTUtil jwtUtil;
+
+    public AuthController(AuthService authService, AuthenticationManager authenticationManager, JWTUtil jwtUtil) {
         this.authService = authService;
+        this.authenticationManager = authenticationManager;
+        this.jwtUtil = jwtUtil;
     }
     
     @PostMapping("/signup/passenger")
@@ -32,9 +47,31 @@ public class AuthController {
     }
     
     @PostMapping("/signin/passenger")
-    public ResponseEntity<PassengerSigninResponseDto> signIn(@RequestBody PassengerSigninRequestDto passengerSigninRequestDto) {
-        log.info("Received passenger signin request for email: {}", passengerSigninRequestDto.getEmail());
-        PassengerSigninResponseDto responseDto = authService.signinPassenger(passengerSigninRequestDto);
-        return ResponseEntity.ok(responseDto);
+    public ResponseEntity<?> signIn(@RequestBody PassengerSigninRequestDto authRequestDto, HttpServletResponse response) {
+        log.info("Received passenger signin request for email: {}", authRequestDto.getEmail());
+        
+        // creating an object of UsernamePasswordAuthenticationToken since it the DaoAuthenticationProvider supports it
+        Authentication authentication = authenticationManager.authenticate(
+            new UsernamePasswordAuthenticationToken(authRequestDto.getEmail(), authRequestDto.getPassword())
+        );
+        
+        if (authentication.isAuthenticated()) {
+            log.info("Passenger authenticated successfully: {}", authRequestDto.getEmail());
+            String jwtToken = jwtUtil.createToken(authRequestDto.getEmail());
+
+            ResponseCookie cookie = ResponseCookie.from("JwtToken", jwtToken)
+                                        .httpOnly(true)
+                                        .secure(false)
+                                        .path("/")
+                                        .maxAge(cookieExpiry)
+                                        .build();
+
+            response.setHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+            log.info("JWT token created and set in cookie for email: {}", authRequestDto.getEmail());
+            return new ResponseEntity<>(PassengerSigninResponseDto.builder().success(true).build(), HttpStatus.OK);
+        } else {
+            log.error("Authentication failed for email: {}", authRequestDto.getEmail());
+            return new ResponseEntity<>("Something went wrong during authentication", HttpStatus.UNAUTHORIZED);
+        }
     }
 }
