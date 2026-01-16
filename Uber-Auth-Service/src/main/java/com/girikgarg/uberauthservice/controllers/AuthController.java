@@ -6,6 +6,7 @@ import com.girikgarg.uberauthservice.dto.PassengerSignupRequestDto;
 import com.girikgarg.uberauthservice.dto.PassengerSignupResponseDto;
 import com.girikgarg.uberauthservice.services.api.AuthService;
 import com.girikgarg.uberauthservice.utils.JWTUtil;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -73,5 +74,14 @@ public class AuthController {
             log.error("Authentication failed for email: {}", authRequestDto.getEmail());
             return new ResponseEntity<>("Something went wrong during authentication", HttpStatus.UNAUTHORIZED);
         }
+    }
+
+    @GetMapping("/validate")
+    public ResponseEntity<?> validateToken(HttpServletRequest request) {
+        log.info("Token validation request received");
+        String email = request.getAttribute("email") != null ? 
+                       request.getAttribute("email").toString() : "Unknown";
+        log.info("Token validated successfully for user: {}", email);
+        return new ResponseEntity<>("Token is valid", HttpStatus.OK);
     }
 }
