@@ -1,0 +1,48 @@
+# =============================================================================
+# UBER API GATEWAY - PRODUCTION CONFIGURATION
+# =============================================================================
+# This file contains AWS production-specific configurations that override
+# the default application.yml when running with --spring.profiles.active=prod
+
+# =============================================================================
+# SERVICE DISCOVERY CONFIGURATION
+# =============================================================================
+# AWS Eureka server connection - uses private IP for internal communication
+# Why needed: Eureka server runs on different EC2 instance with private IP
+eureka:
+  client:
+    service-url:
+      defaultZone: http://${EUREKA_PRIVATE_IP}:8761/eureka/
+  instance:
+    prefer-ip-address: true
+    # Instance ID includes private IP for uniqueness in AWS environment
+    instance-id: ${spring.application.name}:${EC2_PRIVATE_IP}:${server.port}
+
+# =============================================================================
+# LOGGING CONFIGURATION
+# =============================================================================
+# CloudWatch-compatible logging with file output
+# Why needed: AWS CloudWatch agent reads from these log files
+logging:
+  file:
+    name: /var/log/uber-services/gateway.log
+  level:
+    com.girikgarg.uberapigateway: INFO
+    org.springframework.cloud.gateway: INFO
+    reactor.netty: WARN
+
+# =============================================================================
+# ACTUATOR CONFIGURATION
+# =============================================================================
+# Health checks for AWS ALB and monitoring
+# Why needed: ALB uses /actuator/health for health checks and route inspection
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway,routes,metrics
+  endpoint:
+    health:
+      show-details: always
+    gateway:
+      enabled: true
