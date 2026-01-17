@@ -1,5 +1,6 @@
 package com.girikgarg.uberauthservice.dto;
 
+import com.girikgarg.uberentityservice.models.Role;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -9,6 +10,6 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class PassengerSigninResponseDto {
-    private Boolean success;
+public class ValidateTokenRequestDto {
+    private Role requiredRole;
 }

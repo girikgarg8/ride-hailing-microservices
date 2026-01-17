@@ -54,9 +54,10 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         // Register WebSocket endpoint with custom handshake interceptor for user identification
+        // Allow all origins - API Gateway will handle the main CORS policy
         registry.addEndpoint("/ws")
                 .addInterceptors(new UserHandshakeInterceptor())  // Extract userId during handshake
-                .setAllowedOriginPatterns("*")  // Allow all origins (dev mode)
+                .setAllowedOriginPatterns("*")  // Required for WebSocket CORS, Gateway handles HTTP CORS
                 .withSockJS();
     }
 

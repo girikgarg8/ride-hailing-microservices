@@ -43,20 +43,32 @@
             color: white;
         }
         
-        .driver-info {
+        .login-form, .driver-info {
             background-color: #f9f9f9;
-            padding: 15px;
+            padding: 20px;
             border-radius: 5px;
             margin-bottom: 20px;
         }
         
-        .driver-info input {
+        .login-form input, .driver-info input {
             padding: 10px;
             font-size: 16px;
             border: 1px solid #ddd;
             border-radius: 5px;
-            margin-right: 10px;
-            width: 200px;
+            margin: 5px 0;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
         }
         
         button {
@@ -66,6 +78,7 @@
             border-radius: 5px;
             cursor: pointer;
             transition: background-color 0.3s;
+            width: 100%;
         }
         
         .btn-primary {
@@ -156,25 +169,68 @@
             padding: 2px 6px;
             border-radius: 3px;
         }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .info-text {
+            color: #666;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        
+        .error-message {
+            color: #f44336;
+            background-color: #ffebee;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            display: none;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🚗 Uber Driver Portal</h1>
-        <span id="connectionStatus" class="status disconnected">Disconnected</span>
+        <span id="connectionStatus" class="status disconnected">Not Logged In</span>
         
-        <div class="driver-info">
-            <h3>Driver Connection</h3>
-            <input type="number" id="driverId" placeholder="Enter Driver ID (e.g., 1, 2, 3)" min="1" />
-            <button class="btn-primary" onclick="connect()" id="connectBtn">Go Online</button>
-            <button class="btn-danger" onclick="disconnect()" style="display: none;" id="disconnectBtn">Go Offline</button>
+        <!-- Login Form (shown first) -->
+        <div id="loginSection" class="login-form">
+            <h3>Driver Login</h3>
+            <div class="error-message" id="loginError"></div>
+            <div class="form-group">
+                <label for="driverEmail">Email:</label>
+                <input type="email" id="driverEmail" placeholder="driver@uber.com" />
+            </div>
+            <div class="form-group">
+                <label for="driverPassword">Password:</label>
+                <input type="password" id="driverPassword" placeholder="Enter your password" />
+            </div>
+            <button class="btn-primary" onclick="login()">Login</button>
+            <p class="info-text">
+                🔒 Login via API Gateway - Your credentials are authenticated securely
+            </p>
+        </div>
+        
+        <!-- Driver Info (shown after login) -->
+        <div id="driverSection" class="driver-info hidden">
+            <h3>WebSocket Connection</h3>
+            <div class="error-message" id="connectionError"></div>
+            <p><strong>Logged in as:</strong> <span id="driverEmailDisplay"></span></p>
+            <p><strong>Driver ID:</strong> <span id="driverIdDisplay"></span></p>
+            <button class="btn-success" onclick="connectWebSocket()" id="connectBtn">Go Online</button>
+            <button class="btn-danger" onclick="disconnect()" id="disconnectBtn" style="display: none;">Go Offline</button>
+            <p class="info-text">
+                🌐 WebSocket via API Gateway (port 9001) - Secured with JWT authentication
+            </p>
         </div>
         
         <div class="ride-requests">
             <h2>📍 Incoming Ride Requests</h2>
             <div id="requestsList">
                 <div class="no-requests">
-                    🔄 Waiting for ride requests...
+                    🔄 Please login to receive ride requests...
                 </div>
             </div>
         </div>
@@ -186,47 +242,120 @@
     
     <script>
         var stompClient = null;
+        var currentDriverEmail = null;
         var currentDriverId = null;
         var rideRequestSubscription = null;
+        const API_GATEWAY_URL = "http://localhost:9001";
 
-        function connect() {
-            const driverId = document.getElementById("driverId").value.trim();
+        async function login() {
+            const email = document.getElementById("driverEmail").value.trim();
+            const password = document.getElementById("driverPassword").value.trim();
+            const loginError = document.getElementById("loginError");
             
-            if (!driverId) {
-                alert("⚠️ Please enter your Driver ID!");
+            if (!email || !password) {
+                showError(loginError, "Please enter both email and password!");
                 return;
             }
 
-            console.log("🔌 Connecting driver:", driverId);
+            console.log("🔐 Logging in driver:", email);
             
-            // Connect to WebSocket server with driver ID
-            const socket = new SockJS("http://localhost:8080/ws?userId=" + driverId);
-            stompClient = Stomp.over(socket);
-            
-            // Disable STOMP debug logs
-            stompClient.debug = null;
-            
-            stompClient.connect({}, function (frame) {
-                console.log("✅ Connected as driver:", driverId);
-                currentDriverId = driverId;
-                
-                // Update UI
-                document.getElementById("connectionStatus").textContent = "Online - " + driverId;
+            try {
+                // Call signin API via API Gateway
+                const response = await fetch(`${API_GATEWAY_URL}/api/v1/auth/signin`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include', // Important: Include cookies
+                    body: JSON.stringify({ email, password })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Authentication failed: ${response.status}`);
+                }
+
+                const data = await response.json();
+                console.log("✅ Login successful:", data);
+
+                // Check if user is a DRIVER
+                if (data.role !== 'DRIVER') {
+                    throw new Error('Only drivers can access this portal. Your role is: ' + data.role);
+                }
+
+                // Store driver info
+                currentDriverEmail = data.email;
+                currentDriverId = data.id; // Now properly included in signin response
+
+                // Hide login form, show driver section
+                document.getElementById("loginSection").classList.add("hidden");
+                document.getElementById("driverSection").classList.remove("hidden");
+                document.getElementById("driverEmailDisplay").textContent = data.email;
+                document.getElementById("driverIdDisplay").textContent = currentDriverId;
+                document.getElementById("connectionStatus").textContent = "Authenticated - " + data.email;
                 document.getElementById("connectionStatus").className = "status connected";
-                document.getElementById("driverId").disabled = true;
-                document.getElementById("connectBtn").style.display = "none";
-                document.getElementById("disconnectBtn").style.display = "inline-block";
                 
-                // Subscribe to ride requests
-                subscribeToRideRequests();
+                // Show correct button
+                document.getElementById("connectBtn").style.display = "inline-block";
+                document.getElementById("disconnectBtn").style.display = "none";
+
+                hideError(loginError);
                 
-                console.log("🎧 Subscribed to /topic/rideRequest");
-                alert("✅ You're now online and ready to receive ride requests!");
+                alert("✅ Login successful! Click 'Go Online' to start receiving ride requests.");
                 
-            }, function(error) {
-                console.error("❌ Connection error:", error);
-                alert("❌ Failed to connect. Make sure the WebSocket server is running on port 8080.");
-            });
+            } catch (error) {
+                console.error("❌ Login failed:", error);
+                showError(loginError, error.message);
+            }
+        }
+
+        function connectWebSocket() {
+            if (!currentDriverId) {
+                alert("⚠️ Please login first!");
+                return;
+            }
+
+            const connectionError = document.getElementById("connectionError");
+            console.log("🔌 Connecting to WebSocket via API Gateway...");
+            
+            try {
+                // Connect to WebSocket server through API Gateway
+                // The browser will automatically send the JWT cookie set during login
+                const socket = new SockJS(`${API_GATEWAY_URL}/ws?userId=${currentDriverId}`);
+                stompClient = Stomp.over(socket);
+                
+                // Disable STOMP debug logs
+                stompClient.debug = null;
+                
+                stompClient.connect({}, function (frame) {
+                    console.log("✅ WebSocket connected via API Gateway");
+                    
+                    // Update UI
+                    document.getElementById("connectionStatus").textContent = "Online - " + currentDriverEmail;
+                    document.getElementById("connectBtn").style.display = "none";
+                    document.getElementById("disconnectBtn").style.display = "inline-block";
+                    
+                    // Subscribe to ride requests
+                    subscribeToRideRequests();
+                    
+                    console.log("🎧 Subscribed to /topic/rideRequest");
+                    hideError(connectionError);
+                    alert("✅ You're now online and ready to receive ride requests!");
+                    
+                    // Update requests list message
+                    const requestsList = document.getElementById("requestsList");
+                    if (requestsList.querySelector(".no-requests")) {
+                        requestsList.innerHTML = '<div class="no-requests">🔄 Waiting for ride requests...</div>';
+                    }
+                    
+                }, function(error) {
+                    console.error("❌ WebSocket connection error:", error);
+                    showError(connectionError, "Failed to connect to WebSocket. Make sure all services are running.");
+                });
+                
+            } catch (error) {
+                console.error("❌ WebSocket connection failed:", error);
+                showError(connectionError, error.message);
+            }
         }
 
         function subscribeToRideRequests() {
@@ -241,22 +370,35 @@
         function disconnect() {
             if (stompClient && stompClient.connected) {
                 stompClient.disconnect(function() {
-                    console.log("🔴 Disconnected");
-                    resetUI();
+                    console.log("🔴 Disconnected from WebSocket");
+                    resetWebSocketUI();
                 });
             } else {
-                resetUI();
+                resetWebSocketUI();
             }
         }
 
-        function resetUI() {
-            document.getElementById("connectionStatus").textContent = "Disconnected";
+        function logout() {
+            disconnect();
+            currentDriverEmail = null;
+            currentDriverId = null;
+            
+            // Reset UI
+            document.getElementById("loginSection").classList.remove("hidden");
+            document.getElementById("driverSection").classList.add("hidden");
+            document.getElementById("connectionStatus").textContent = "Not Logged In";
             document.getElementById("connectionStatus").className = "status disconnected";
-            document.getElementById("driverId").disabled = false;
+            document.getElementById("driverEmail").value = "";
+            document.getElementById("driverPassword").value = "";
+            document.getElementById("requestsList").innerHTML = '<div class="no-requests">🔄 Please login to receive ride requests...</div>';
+        }
+
+        function resetWebSocketUI() {
+            document.getElementById("connectionStatus").textContent = "Authenticated - " + currentDriverEmail;
+            document.getElementById("connectionStatus").className = "status connected";
             document.getElementById("connectBtn").style.display = "inline-block";
             document.getElementById("disconnectBtn").style.display = "none";
-            document.getElementById("requestsList").innerHTML = '<div class="no-requests">🔄 Waiting for ride requests...</div>';
-            currentDriverId = null;
+            document.getElementById("requestsList").innerHTML = '<div class="no-requests">🔄 Click "Go Online" to receive ride requests...</div>';
         }
 
         function displayRideRequest(request) {
@@ -297,7 +439,7 @@
 
         function acceptRide(bookingId) {
             if (!stompClient || !stompClient.connected) {
-                alert("⚠️ Not connected to server!");
+                alert("⚠️ Not connected to WebSocket server!");
                 return;
             }
 
@@ -309,15 +451,14 @@
             console.log("✅ Driver accepting ride:", bookingId);
             
             // Send acceptance via WebSocket to Socket Service
-            // Socket Service will handle forwarding to Booking Service
             const rideResponse = {
                 response: true,
                 bookingId: bookingId
             };
             
-            // Send to /app/rideResponse/{userId} - userId is extracted from path
+            // Send to /app/rideResponse/{userId}
             stompClient.send("/app/rideResponse/" + currentDriverId, {}, JSON.stringify(rideResponse));
-            console.log("📡 Sent ride acceptance to Socket Service:", rideResponse);
+            console.log("📡 Sent ride acceptance to Socket Service via Gateway:", rideResponse);
             
             // Update UI immediately
             const requestDiv = document.getElementById("request-" + bookingId);
@@ -328,12 +469,12 @@
                 requestDiv.querySelector(".actions").innerHTML = '<strong style="color: #155724;">You accepted this ride! Processing...</strong>';
             }
             
-            alert("✅ Ride #" + bookingId + " accepted! Socket Service is processing your response.");
+            alert("✅ Ride #" + bookingId + " accepted!");
         }
 
         function rejectRide(bookingId) {
             if (!stompClient || !stompClient.connected) {
-                alert("⚠️ Not connected to server!");
+                alert("⚠️ Not connected to WebSocket server!");
                 return;
             }
 
@@ -344,15 +485,14 @@
 
             console.log("❌ Driver rejecting ride:", bookingId);
             
-            // Send rejection via WebSocket to Socket Service
+            // Send rejection via WebSocket
             const rideResponse = {
                 response: false,
                 bookingId: bookingId
             };
             
-            // Send to /app/rideResponse/{userId} - userId is extracted from path
             stompClient.send("/app/rideResponse/" + currentDriverId, {}, JSON.stringify(rideResponse));
-            console.log("📡 Sent ride rejection to Socket Service:", rideResponse);
+            console.log("📡 Sent ride rejection to Socket Service via Gateway:", rideResponse);
             
             // Update UI
             const requestDiv = document.getElementById("request-" + bookingId);
@@ -368,9 +508,16 @@
         }
 
         function playNotificationSound() {
-            // Optional: Play a sound when new request arrives
-            // You can add an audio element or use Web Audio API
             console.log("🔔 Notification sound would play here");
+        }
+
+        function showError(element, message) {
+            element.textContent = "❌ " + message;
+            element.style.display = "block";
+        }
+
+        function hideError(element) {
+            element.style.display = "none";
         }
 
         // Cleanup on page unload
@@ -379,7 +526,15 @@
                 stompClient.disconnect();
             }
         });
+
+        // Allow Enter key to submit login
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById("driverPassword").addEventListener("keypress", function(event) {
+                if (event.key === "Enter") {
+                    login();
+                }
+            });
+        });
     </script>
 </body>
 </html>
-

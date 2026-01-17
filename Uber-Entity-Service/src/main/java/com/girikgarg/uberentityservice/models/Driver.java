@@ -19,9 +19,12 @@ import java.util.List;
 public class Driver extends BaseModel {
 
     private String name;
-
+    
     @Column(nullable = false, unique = true)
-    private String licenseNumber;
+    private String email; // For authentication
+    
+    @Column(nullable = false)
+    private String password; // Hashed password for authentication
 
     private String governmentIdNumber; // e.g., Aadhar, SSN, National ID
 

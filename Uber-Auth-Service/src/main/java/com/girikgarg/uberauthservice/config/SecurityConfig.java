@@ -15,13 +15,11 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.web.servlet.config.annotation.CorsRegistry;
-import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
 @EnableWebSecurity
 @RequiredArgsConstructor
-public class SecurityConfig implements WebMvcConfigurer {
+public class SecurityConfig {
     
     private final UserDetailsService userDetailsService;
     private final JwtAuthFilter jwtAuthFilter;
@@ -37,8 +35,8 @@ public class SecurityConfig implements WebMvcConfigurer {
                 .sessionCreationPolicy(org.springframework.security.config.http.SessionCreationPolicy.STATELESS)
             ) // Disable session creation for JWT-based auth
             .authorizeHttpRequests(authorize -> authorize
-                .requestMatchers("/api/v1/auth/signup/**").permitAll() // Allow signup endpoints
-                .requestMatchers("/api/v1/auth/signin/**").permitAll() // Allow signin endpoints
+                .requestMatchers("/api/v1/auth/signup", "/api/v1/auth/signup/**").permitAll() // Allow signup endpoints
+                .requestMatchers("/api/v1/auth/signin", "/api/v1/auth/signin/**").permitAll() // Allow signin endpoints
                 .requestMatchers("/actuator/health").permitAll() // Allow health check
                 .anyRequest().authenticated() // All other requests require authentication (including /validate)
             );
@@ -64,12 +62,4 @@ public class SecurityConfig implements WebMvcConfigurer {
         return configuration.getAuthenticationManager();
     }
 
-    // https://medium.com/@benaya7/cors-configuration-in-spring-security-and-webmvc-lets-get-it-out-of-the-way-47ba059ca524
-    @Override
-    public void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping("/**")
-                .allowCredentials(true)
-                .allowedOriginPatterns("*")
-                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS");
-    }
 }

@@ -1,15 +1,15 @@
 package com.girikgarg.uberauthservice.dto;
 
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-@Getter
-@Setter
+@Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class PassengerSignupRequestDto {
+public class SigninRequestDto {
     private String email;
     private String password;
-    private String phoneNumber;
-    private String name;
 }

@@ -1,0 +1,194 @@
+spring:
+  application:
+    name: Uber-API-Gateway
+  cloud:
+    gateway:
+      # Enable discovery locator for automatic route creation from Eureka
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+      
+      # Manual route configuration for better control
+      routes:
+        # =====================================================
+        # AUTH SERVICE ROUTES (Public - No JWT required)
+        # =====================================================
+        - id: auth-signup
+          uri: lb://UBER-AUTH-SERVICE
+          predicates:
+            - Path=/api/v1/auth/signup
+        
+        - id: auth-signin
+          uri: lb://UBER-AUTH-SERVICE
+          predicates:
+            - Path=/api/v1/auth/signin
+        
+        - id: auth-validate
+          uri: lb://UBER-AUTH-SERVICE
+          predicates:
+            - Path=/api/v1/auth/validate
+        
+        # =====================================================
+        # BOOKING SERVICE ROUTES
+        # =====================================================
+        - id: booking-create
+          uri: lb://UBER-BOOKING-SERVICE
+          predicates:
+            - Path=/api/v1/bookings
+            - Method=POST
+          filters:
+            - AuthenticationDelegationFilter
+          metadata:
+            requiredRole: PASSENGER
+        
+        - id: booking-update-status
+          uri: lb://UBER-BOOKING-SERVICE
+          predicates:
+            - Path=/api/v1/bookings/{bookingId}
+            - Method=PATCH
+          filters:
+            - AuthenticationDelegationFilter
+          metadata:
+            requiredRole: DRIVER
+        
+        # =====================================================
+        # LOCATION SERVICE ROUTES
+        # =====================================================
+        - id: location-save-driver-location
+          uri: lb://UBER-LOCATION-SERVICE
+          predicates:
+            - Path=/api/v1/location/drivers
+            - Method=POST
+          filters:
+            - AuthenticationDelegationFilter
+            - RewritePath=/api/v1/location/drivers, /api/location/drivers
+          metadata:
+            requiredRole: DRIVER
+        
+        - id: location-nearby-drivers
+          uri: lb://UBER-LOCATION-SERVICE
+          predicates:
+            - Path=/api/v1/location/nearby/drivers
+            - Method=POST
+          filters:
+            - AuthenticationDelegationFilter
+            - RewritePath=/api/v1/location/nearby/drivers, /api/location/nearby/drivers
+          metadata:
+            requiredRole: PASSENGER
+        
+        # =====================================================
+        # SOCKET SERVICE ROUTES (Protected - DRIVER only)
+        # =====================================================
+        - id: socket-service-rest
+          uri: lb://UBER-SOCKET-SERVICE
+          predicates:
+            - Path=/api/v1/socket/**
+          filters:
+            - AuthenticationDelegationFilter
+            - RewritePath=/api/v1/socket/(?<segment>.*), /api/socket/$\{segment}
+          metadata:
+            requiredRole: DRIVER
+        
+        # WebSocket Route (For driver connections)
+        # Note: SockJS handshake (/ws/info) needs to be public, authentication happens in WebSocket client
+        - id: socket-service-ws
+          uri: lb://UBER-SOCKET-SERVICE
+          predicates:
+            - Path=/ws,/ws/**
+        
+        # =====================================================
+        # REVIEW SERVICE ROUTES
+        # =====================================================
+        - id: review-create
+          uri: lb://UBER-REVIEW-SERVICE
+          predicates:
+            - Path=/api/v1/reviews
+            - Method=POST
+          filters:
+            - AuthenticationDelegationFilter
+          metadata:
+            requiredRole: PASSENGER
+        
+        - id: review-get-all
+          uri: lb://UBER-REVIEW-SERVICE
+          predicates:
+            - Path=/api/v1/reviews
+            - Method=GET
+          filters:
+            - AuthenticationDelegationFilter
+          metadata:
+            requiredRole: PASSENGER
+        
+        - id: review-get-by-id
+          uri: lb://UBER-REVIEW-SERVICE
+          predicates:
+            - Path=/api/v1/reviews/{reviewId}
+            - Method=GET
+          filters:
+            - AuthenticationDelegationFilter
+          metadata:
+            requiredRole: PASSENGER
+        
+        - id: review-delete
+          uri: lb://UBER-REVIEW-SERVICE
+          predicates:
+            - Path=/api/v1/reviews/{reviewId}
+            - Method=DELETE
+          filters:
+            - AuthenticationDelegationFilter
+          metadata:
+            requiredRole: PASSENGER
+      
+      # Global CORS Configuration (using Gateway's built-in CORS)
+      # Exclude WebSocket paths - they handle their own CORS
+      globalcors:
+        cors-configurations:
+          '[/api/**]':  # Only apply CORS to API paths, not WebSocket paths
+            allowedOriginPatterns: "*"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+              - PATCH
+            allowedHeaders: "*"
+            allowCredentials: true
+            maxAge: 3600
+
+server:
+  port: 9001  # Changed from 9000 due to port conflict issue
+
+# Eureka Client Configuration
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${server.port}
+
+# Actuator Configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway,routes,metrics
+  endpoint:
+    health:
+      show-details: always
+    gateway:
+      enabled: true
+
+# Logging Configuration
+logging:
+  level:
+    root: INFO
+    com.girikgarg.uberapigateway: DEBUG
+    org.springframework.cloud.gateway: DEBUG
+    reactor.netty: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

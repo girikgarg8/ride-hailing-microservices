@@ -1,5 +1,6 @@
 package com.girikgarg.uberauthservice.filters;
 
+import com.girikgarg.uberauthservice.helpers.AuthUserDetails;
 import com.girikgarg.uberauthservice.utils.JWTUtil;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -81,8 +82,11 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                     SecurityContextHolder.getContext().setAuthentication(authToken);
                     
-                    // Set email in request attribute for controller access
+                    // Set email and role in request attributes for controller access
                     request.setAttribute("email", email);
+                    if (userDetails instanceof AuthUserDetails) {
+                        request.setAttribute("role", ((AuthUserDetails) userDetails).getRole().name());
+                    }
                 } else {
                     log.warn("JWT token validation failed for user: {}", email);
                     response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);

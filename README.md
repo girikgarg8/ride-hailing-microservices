@@ -1,337 +1,236 @@
-# 🚖 Microservices-Based Ride-Hailing Platform
+# 🚀 Uber Microservices Platform
 
-A production-ready, distributed ride-hailing platform built using **microservices architecture** with **Spring Boot**, demonstrating industry best practices for scalable backend systems.
+**Production-Grade Microservices Architecture | Local Development | AWS Deployment | Demo Ready**
+
+---
+
+## 📖 Single Source of Truth
+
+**All documentation has been consolidated into one comprehensive guide:**
+
+👉 **[AWS-DEPLOYMENT-GUIDE.md](./AWS-DEPLOYMENT-GUIDE.md)** 👈
+
+This guide contains:
+- ✅ **Part 1: Local Development & Demo**
+  - Quick start instructions
+  - Complete demo guide (24-minute walkthrough)
+  - Automation scripts
+  - Architecture diagrams
+  - Testing commands
+
+- ✅ **Part 2: AWS Production Deployment**
+  - Infrastructure setup (VPC, RDS, Redis, Kafka, EC2)
+  - Application deployment
+  - Production demo with CloudWatch logs
+  - Cleanup instructions
+  - Resume bullet points
+
+---
+
+## 🚀 Quick Start (Local Development)
+
+### Prerequisites
+- Java 17
+- MySQL (port 3306)
+- Redis (port 6379)
+- Kafka (port 9092)
+- Gradle
+
+### Option 1: Automated Start (Recommended)
+
+```bash
+# Make scripts executable (first time only)
+chmod +x start-all-services.sh stop-all-services.sh
+
+# Start all services
+./start-all-services.sh
+
+# When done
+./stop-all-services.sh
+```
+
+### Option 2: Manual Start
+
+See [AWS-DEPLOYMENT-GUIDE.md](./AWS-DEPLOYMENT-GUIDE.md#quick-start---local-development) for manual startup instructions.
 
 ---
 
 ## 🏗️ Architecture Overview
 
-This project implements a complete ride-hailing system (Uber-like) using modern microservices patterns:
+### **Microservices (7 total):**
+1. **Uber-API-Gateway** (Port 9000) - Single entry point, JWT auth delegation
+2. **Uber-Service-Discovery** (Port 8761) - Eureka server
+3. **Uber-Auth-Service** (Port 9090) - JWT creation & validation
+4. **Uber-Booking-Service** (Port 8001) - Booking management + Kafka consumer
+5. **Uber-Location-Service** (Port 7070) - Redis geospatial queries
+6. **Uber-Socket-Service** (Port 3002) - WebSocket + Kafka producer
+7. **Uber-Review-Service** (Port 7272) - Reviews CRUD
 
-- **Shared Entity Library Pattern** - Common data models
-- **Database Per Service** - Independent data storage
-- **API Gateway** - Unified entry point
-- **Service Discovery** - Dynamic service registration
-- **Event-Driven Architecture** - Asynchronous communication
-- **Distributed Transactions** - SAGA pattern
-- **Real-Time Features** - WebSockets for notifications
-- **Geospatial Capabilities** - Location-based services
+### **Key Technical Highlights:**
 
----
+🔐 **Proper API Gateway Pattern**
+- Gateway delegates JWT validation to Auth Service (not local validation)
+- Auth Service is the single source of truth for authentication
+- Gateway calls Auth Service's `/validate` endpoint for every protected request
 
-## 📦 Microservices
+🌐 **Service Discovery**
+- Eureka enables dynamic service resolution
+- No hardcoded IPs or ports
+- Client-side load balancing
 
-### ✅ 1. Uber Entity Service
-**Status:** Complete | **Type:** Shared Library
+📨 **Event-Driven Architecture**
+- Kafka for asynchronous communication
+- Socket Service → Booking Service decoupled via Kafka
+- Guaranteed message delivery
 
-Common data models (entities) shared across all microservices.
-
-**Features:**
-- Core entities: `Driver`, `Passenger`, `Booking`, `BaseModel`
-- JPA/Hibernate mappings with relationships
-- Flyway database migrations (V1 with FK constraints)
-- Published to Maven Local for cross-service consumption
-- Lombok integration for boilerplate reduction
-
-**Tech Stack:**
-- Spring Boot 3.2.5, Spring Data JPA
-- MySQL 8.0+, Flyway
-- Lombok, Java 17
-
-📂 [View Service](./Uber-Entity-Service/)
+⚡ **Real-Time Communication**
+- WebSocket for instant driver notifications
+- Redis GEORADIUS for sub-second nearby driver search
 
 ---
 
-### ✅ 2. Demo Entity Consumer Service
-**Status:** Complete | **Type:** Reference Implementation
+## 🎬 Demo Flow (24 minutes)
 
-Demonstrates how to integrate and consume the Entity Service in microservices.
+1. **Setup** (3 min) - Show Eureka dashboard with all services
+2. **Authentication** (5 min) - Signup → Signin → JWT validation (Gateway → Auth Service)
+3. **Location Service** (5 min) - Update driver locations, Redis GEORADIUS query
+4. **Booking Service** (7 min) - Create booking, inter-service communication
+5. **WebSocket** (10 min) - Real-time broadcast to drivers
+6. **Kafka Event Flow** (10 min) - Driver accepts ride, Kafka async processing
+7. **Review Service** (5 min) - Complete ride, leave review
 
-**Features:**
-- Imports `uber-entity-service` from Maven Local
-- JPA Repositories: `DriverRepository`, `PassengerRepository`, `BookingRepository`
-- REST API endpoints for CRUD operations
-- Proper dependency management
-
-**Tech Stack:**
-- Spring Boot 3.2.5, Spring Web
-- Maven Local dependency resolution
-
-📂 [View Service](./Demo-Entity-Consumer-Service/)
+**Full demo script with cURL commands:** [AWS-DEPLOYMENT-GUIDE.md](./AWS-DEPLOYMENT-GUIDE.md#complete-demo-guide)
 
 ---
 
-### 🔜 3. Auth Service (Planned)
-Authentication and authorization microservice.
+## 🎯 Technical Highlights
 
-**Planned Features:**
-- JWT-based authentication
-- OAuth2 integration
-- Role-based access control (RBAC)
-- Passenger & Driver registration/login
+✨ **Enterprise Microservices Patterns**
+- API Gateway delegates authentication (not local validation)
+- Single source of truth for JWT (Auth Service)
+- Service discovery with Eureka (no hardcoded endpoints)
 
----
+✨ **Production-Ready Architecture**
+- Event-driven with Kafka
+- Real-time with WebSocket
+- Geospatial queries with Redis
+- Centralized logging ready
 
-### 🔜 4. Booking Service (Planned)
-Core booking management service.
-
-**Planned Features:**
-- Create and manage bookings
-- Real-time driver assignment
-- Booking status tracking
-- Fare calculation
-
----
-
-### 🔜 5. Location Service (Planned)
-Geospatial and location tracking service.
-
-**Planned Features:**
-- Real-time location tracking
-- Geospatial search for nearby drivers
-- Route optimization
-- Redis for caching live locations
+✨ **Cloud-Native Deployment**
+- VPC with public/private subnets
+- RDS, ElastiCache, MSK
+- ALB, NAT Gateway, CloudWatch
+- Security groups enforcing zero direct backend access
 
 ---
 
-### 🔜 6. Payment Service (Planned)
-Payment processing and wallet management.
-
-**Planned Features:**
-- Payment gateway integration
-- Digital wallet system
-- Transaction history
-- Refund processing
-
----
-
-### 🔜 7. Notification Service (Planned)
-Real-time notifications and alerts.
-
-**Planned Features:**
-- WebSocket-based real-time updates
-- SMS/Email notifications
-- Push notifications
-- Event-driven messaging (Kafka/RabbitMQ)
-
----
-
-## 🛠️ Tech Stack
-
-| Layer | Technologies |
-|-------|-------------|
-| **Backend** | Spring Boot 3.2.5, Java 17 |
-| **Database** | MySQL 8.0+, Flyway |
-| **Build Tool** | Gradle 8.7 |
-| **ORM** | Spring Data JPA, Hibernate |
-| **Service Discovery** | Eureka (Planned) |
-| **API Gateway** | Spring Cloud Gateway (Planned) |
-| **Messaging** | Kafka/RabbitMQ (Planned) |
-| **Caching** | Redis (Planned) |
-| **Monitoring** | Prometheus, Grafana (Planned) |
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-```bash
-- Java 17+
-- MySQL 8.0+
-- Gradle 8.x
-```
-
-### 1. Setup MySQL Database
-```bash
-mysql -u root -p
-CREATE DATABASE Uber_Db_Local;
-```
-
-### 2. Build & Publish Entity Service
-```bash
-cd Uber-Entity-Service
-./gradlew clean build publishToMavenLocal -x test
-```
-
-### 3. Run Demo Consumer Service
-```bash
-cd Demo-Entity-Consumer-Service
-./gradlew bootRun
-```
-
-### 4. Test API
-```bash
-# Get all drivers
-curl http://localhost:8888/api/demo/drivers
-
-# Get all passengers
-curl http://localhost:8888/api/demo/passengers
-```
-
----
-
-## 📊 Database Schema
-
-### Current Schema (V1)
+## 📚 Documentation Structure
 
 ```
-┌─────────────────┐       ┌─────────────────┐       ┌─────────────────┐
-│    passenger    │       │     booking     │       │     driver      │
-├─────────────────┤       ├─────────────────┤       ├─────────────────┤
-│ id (PK)         │       │ id (PK)         │       │ id (PK)         │
-│ name            │◄──────│ passenger_id(FK)│       │ name            │
-│ email           │       │ driver_id (FK)  │──────►│ license_number  │
-│ phone_number    │       │ booking_status  │       │ govt_id_number  │
-│ password        │       │ start_time      │       │ phone_number    │
-│ created_at      │       │ end_time        │       │ created_at      │
-│ updated_at      │       │ total_distance  │       │ updated_at      │
-└─────────────────┘       │ created_at      │       └─────────────────┘
-                          │ updated_at      │
-                          └─────────────────┘
-```
-
----
-
-## 🗂️ Project Structure
-
-```
-Microservices-Based-Ride-Hailing-Platform/
-├── README.md                           # This file
-├── .gitignore                          # Git ignore rules
+Microservices-Based Ride-Hailing Platform/
+├── README.md                          # This file (overview & quick start)
+├── AWS-DEPLOYMENT-GUIDE.md            # 📖 SINGLE SOURCE OF TRUTH
+│                                      #    - Local development guide
+│                                      #    - Complete demo walkthrough
+│                                      #    - AWS deployment instructions
+│                                      #    - Architecture diagrams
+│                                      #    - Resume bullet points
 │
-├── Uber-Entity-Service/                # Shared entity library
-│   ├── src/main/java/.../models/       # Entity models
-│   ├── src/main/resources/
-│   │   ├── application.properties      # DB config
-│   │   └── db/migration/               # Flyway migrations
-│   ├── build.gradle                    # Gradle build file
-│   └── README.md                       # Service documentation
+├── start-all-services.sh              # Automated startup script
+├── stop-all-services.sh               # Automated shutdown script
 │
-├── Demo-Entity-Consumer-Service/       # Reference implementation
-│   ├── src/main/java/.../repository/   # JPA repositories
-│   ├── src/main/java/.../controller/   # REST controllers
-│   ├── build.gradle                    # Gradle with mavenLocal
-│   └── README.md                       # Service documentation
+├── Uber-API-Gateway/                  # API Gateway (delegates auth to Auth Service)
+├── Uber-Service-Discovery/            # Eureka server
+├── Uber-Auth-Service/                 # JWT creation & validation
+├── Uber-Booking-Service/              # Booking management + Kafka consumer
+├── Uber-Location-Service/             # Redis geospatial
+├── Uber-Socket-Service/               # WebSocket + Kafka producer
+├── Uber-Review-Service/               # Reviews CRUD
+├── Uber-Entity-Service/               # Shared entities (dependency)
 │
-└── [Future Services]
-    ├── auth-service/
-    ├── booking-service/
-    ├── location-service/
-    ├── payment-service/
-    └── notification-service/
+├── Uber-Driver-WebSocket-Client/      # Test client for WebSocket
+└── Uber-WebSocket-Demo-Client/        # Demo client for WebSocket
 ```
 
 ---
 
-## 🎯 Development Workflow
+## 🔑 Key Architecture Decisions
 
-### Adding a New Service
+### **API Gateway Authentication Pattern**
 
-1. **Create service directory** in root
-2. **Add dependency** on `uber-entity-service` in `build.gradle`:
-   ```gradle
-   dependencies {
-       implementation 'com.girikgarg:uber-entity-service:0.0.1-SNAPSHOT'
-   }
-   
-   repositories {
-       mavenLocal()
-       mavenCentral()
-   }
-   ```
-3. **Configure** `application.properties` with DB credentials
-4. **Import entities** and create repositories
-
-### Making Changes to Entities
-
-1. **Update** `Uber-Entity-Service` entities
-2. **Create migration** (e.g., `V2__add_new_field.sql`)
-3. **Rebuild & republish**: `./gradlew publishToMavenLocal`
-4. **Restart** consumer services to pick up changes
-
----
-
-## 🧪 Testing
-
-### Entity Service
-```bash
-cd Uber-Entity-Service
-./gradlew test
-./gradlew bootRun  # Verify migrations run successfully
+❌ **WRONG (Anti-pattern):**
+```
+Gateway validates JWT locally
+→ JWT logic duplicated in Gateway
+→ Changes require Gateway redeployment
 ```
 
-### Demo Consumer Service
-```bash
-cd Demo-Entity-Consumer-Service
-./gradlew test
-./gradlew bootRun
-curl http://localhost:8888/api/demo/health
+✅ **CORRECT (Our Implementation):**
+```
+Gateway calls Auth Service /validate endpoint
+→ Auth Service is single source of truth
+→ JWT logic centralized in Auth Service
+→ Changes don't require Gateway redeployment
+```
+
+**Flow:**
+```
+Client → Gateway (extract JWT) 
+       → Auth Service /validate (validate JWT)
+       → Gateway (add X-User-Email header)
+       → Target Service (trusts Gateway)
 ```
 
 ---
 
-## 📝 Key Features Implemented
+## 🚀 Technologies Used
 
-- ✅ Shared entity library with Maven Local publishing
-- ✅ Flyway database migrations with FK constraints
-- ✅ JPA entities with proper relationships
-- ✅ Lombok for clean, concise code
-- ✅ Spring Boot 3.2.5 with Java 17
-- ✅ RESTful API examples
-- ✅ Repository pattern implementation
-- ✅ Professional monorepo structure
-
----
-
-## 🎓 Learning Outcomes
-
-This project demonstrates:
-- Microservices architecture and design patterns
-- Spring Boot ecosystem mastery
-- Database design and migrations
-- Dependency management in distributed systems
-- REST API design
-- Version control and monorepo management
-- Production-ready code practices
+- **Backend:** Spring Boot, Spring Cloud Gateway, Spring Security, Java 17
+- **Service Discovery:** Eureka
+- **Databases:** MySQL (RDS), Redis (ElastiCache)
+- **Messaging:** Apache Kafka (MSK)
+- **Real-Time:** WebSocket
+- **Cloud:** AWS (EC2, VPC, RDS, ElastiCache, MSK, ALB, NAT Gateway, CloudWatch)
+- **Build:** Gradle
+- **Migration:** Flyway
 
 ---
 
-## 🤝 Contributing
+## 📝 Resume-Ready Bullet Points
 
-This is a personal learning project. Feel free to fork and adapt for your own learning!
-
----
-
-## 📄 License
-
-This project is open source and available for educational purposes.
-
----
-
-## 👨‍💻 Author
-
-**Girik Garg**
-
-- Focus: Backend Development, Microservices, Distributed Systems
-- Stack: Java, Spring Boot, MySQL, Redis, Kafka
+See [AWS-DEPLOYMENT-GUIDE.md](./AWS-DEPLOYMENT-GUIDE.md#-resume-bullet-points) for polished resume bullet points highlighting:
+- API Gateway authentication delegation pattern
+- Event-driven architecture with Kafka
+- Microservices orchestration with Eureka
+- AWS production deployment
+- Real-time systems with WebSocket
+- Geospatial queries with Redis
 
 ---
 
-## 🚧 Roadmap
+## 🎯 Next Steps
 
-- [x] Entity Service with Flyway migrations
-- [x] Demo Consumer Service
-- [ ] Auth Service with JWT
-- [ ] Booking Service with SAGA pattern
-- [ ] Location Service with Redis caching
-- [ ] Payment Service integration
-- [ ] Notification Service with WebSockets
-- [ ] API Gateway with Spring Cloud
-- [ ] Service Discovery with Eureka
-- [ ] Docker & Kubernetes deployment
-- [ ] CI/CD pipeline
-- [ ] Monitoring & Logging (ELK Stack)
+1. **Local Demo:** Follow [Quick Start](#-quick-start-local-development) to run locally
+2. **Complete Demo:** Use [Demo Guide](./AWS-DEPLOYMENT-GUIDE.md#complete-demo-guide) for 24-minute walkthrough
+3. **AWS Deployment:** Follow [AWS Deployment](./AWS-DEPLOYMENT-GUIDE.md#part-2-aws-production-deployment) for production setup
+4. **Interview Prep:** Review [Architecture Decisions](./AWS-DEPLOYMENT-GUIDE.md#-architecture) and [Key Highlights](./AWS-DEPLOYMENT-GUIDE.md#-key-demo-highlights-to-emphasize)
 
 ---
 
-**Built with ❤️ and ☕ | Microservices Architecture | Spring Boot**
+## 💡 Key Technical Achievements
+
+**Microservices Architecture:**
+- ✅ Built 7 production-grade microservices with proper separation of concerns
+- ✅ Implemented API Gateway authentication delegation pattern
+- ✅ Deployed to AWS with enterprise-grade security architecture
+- ✅ End-to-end observability with comprehensive logging
+
+**Advanced Patterns:**
+- ✅ Event-driven architecture using Apache Kafka
+- ✅ Real-time communication with WebSocket
+- ✅ Service discovery and load balancing with Eureka
+- ✅ Geospatial queries with Redis for location-based services
+
+---
+
+**Ready to showcase your skills? Start with [AWS-DEPLOYMENT-GUIDE.md](./AWS-DEPLOYMENT-GUIDE.md)!** 🚀
