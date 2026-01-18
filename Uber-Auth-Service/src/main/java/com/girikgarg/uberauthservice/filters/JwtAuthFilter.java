@@ -69,12 +69,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         }
 
         try {
-            String email = jwtUtil.extractEmail(token);
-            
+        String email = jwtUtil.extractEmail(token);
+
             if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                UserDetails userDetails = userDetailsService.loadUserByUsername(email);
+            UserDetails userDetails = userDetailsService.loadUserByUsername(email);
                 
-                if (jwtUtil.validateToken(token, userDetails.getUsername())) {
+            if (jwtUtil.validateToken(token, userDetails.getUsername())) {
                     log.info("JWT token validated successfully for user: {}", email);
                     
                     UsernamePasswordAuthenticationToken authToken = 
@@ -92,8 +92,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                     response.getWriter().write("Unauthorized - Invalid token");
                     return;
-                }
             }
+        }
         } catch (Exception e) {
             log.error("Error processing JWT token: {}", e.getMessage());
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);

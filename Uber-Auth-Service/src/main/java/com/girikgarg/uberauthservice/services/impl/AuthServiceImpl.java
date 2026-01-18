@@ -23,7 +23,7 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
 
     public AuthServiceImpl(DriverRepository driverRepository, 
-                          PassengerRepository passengerRepository,
+        PassengerRepository passengerRepository, 
                           PasswordEncoder passwordEncoder) {
         this.driverRepository = driverRepository;
         this.passengerRepository = passengerRepository;
@@ -64,17 +64,17 @@ public class AuthServiceImpl implements AuthService {
                     .build();
                     
         } else if (signupRequestDto.getRole() == Role.PASSENGER) {
-            Passenger passenger = Passenger.builder()
+        Passenger passenger = Passenger.builder()
                     .name(signupRequestDto.getName())
                     .email(signupRequestDto.getEmail())
                     .password(hashedPassword)
                     .phoneNumber(signupRequestDto.getPhoneNumber())
                     .rating(5.0)
-                    .build();
-            
+                .build();
+
             Passenger savedPassenger = passengerRepository.save(passenger);
             log.info("Passenger signed up successfully with ID: {}", savedPassenger.getId());
-            
+        
             return SignupResponseDto.builder()
                     .id(savedPassenger.getId())
                     .name(savedPassenger.getName())

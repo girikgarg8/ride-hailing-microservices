@@ -61,15 +61,15 @@ public class AuthController {
         log.info("Authenticated: email={}, role={}", request.getEmail(), userDetails.getRole());
         
         String jwtToken = jwtUtil.createToken(request.getEmail());
-        
-        ResponseCookie cookie = ResponseCookie.from("JwtToken", jwtToken)
-                .httpOnly(true)
-                .secure(false)
-                .path("/")
-                .maxAge(cookieExpiry)
-                .build();
-        
-        response.setHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+
+            ResponseCookie cookie = ResponseCookie.from("JwtToken", jwtToken)
+                                        .httpOnly(true)
+                                        .secure(false)
+                                        .path("/")
+                                        .maxAge(cookieExpiry)
+                                        .build();
+
+            response.setHeader(HttpHeaders.SET_COOKIE, cookie.toString());
         
         SigninResponseDto signinResponse = SigninResponseDto.builder()
                 .success(true)
