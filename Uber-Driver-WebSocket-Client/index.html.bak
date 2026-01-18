@@ -248,7 +248,7 @@
         // Configuration - Update these URLs for AWS deployment
         const API_GATEWAY_URL = window.location.hostname === 'localhost' 
             ? "http://localhost:9001" 
-            : "http://13.233.89.192:9001"; // Replace 13.233.89.192 with actual Gateway IP
+            : "http://GATEWAY_PUBLIC_IP:9001"; // Replace GATEWAY_PUBLIC_IP with actual Gateway IP
 
         async function login() {
             const email = document.getElementById("driverEmail").value.trim();

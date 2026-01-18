@@ -1,0 +1,29 @@
+meta {
+  name: First Driver Add Location API
+  type: http
+  seq: 8
+}
+
+post {
+  url: http://{{gateway_public_ip}}:9001/api/v1/location/drivers
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+  Cookie: JwtToken=eyJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE3Njg3NTg4MTIsImV4cCI6MTc2ODc2MjQxMiwic3ViIjoiZHJpdmVyMUB1YmVyLmNvbSJ9.TLF4zKUut-N_NqgHDPo0tIrESHPN8MeJELBA2HpyI1k; Path=/; Max-Age=3600; Expires=Sun, 18 Jan 2026 18:53:32 GMT; HttpOnly
+}
+
+body:json {
+  {
+    "driverId": 1,
+    "latitude": 37.7749,
+    "longitude": -122.4194
+  }
+}
+
+settings {
+  encodeUrl: false
+  timeout: 0
+}

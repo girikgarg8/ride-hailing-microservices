@@ -1,0 +1,27 @@
+meta {
+  name: Role Validation API
+  type: http
+  seq: 4
+}
+
+post {
+  url: http://{{gateway_public_ip}}:9001/api/v1/auth/validate
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+  Cookie: JwtToken=eyJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE3Njg3NTc3ODgsImV4cCI6MTc2ODc2MTM4OCwic3ViIjoiZGVtby1wYXNzZW5nZXJAdWJlci5jb20ifQ.-5__t0OFNwXJBJznZ7xuH2J2IgBheqo8h01C2wE-Gr8; Path=/; Max-Age=3600; Expires=Sun, 18 Jan 2026 18:36:28 GMT; HttpOnly
+}
+
+body:json {
+  {
+    "requiredRole": "PASSENGER"
+  }
+}
+
+settings {
+  encodeUrl: false
+  timeout: 0
+}

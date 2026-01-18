@@ -96,6 +96,16 @@ This platform implements a sophisticated microservices architecture with the fol
 
 ---
 
-## 📚 Demo
-To be updated
+## 🎬 Live Demo
+
+**[📺 Watch Full System Demo (15 minutes)](https://drive.google.com/file/d/1p2yJSCFmrp5Dr_MuDP4JbQOOouaoA5nj/view)**
+
+This comprehensive demo showcases:
+- **Complete AWS Infrastructure** - VPC, EC2, RDS, ElastiCache, MSK setup
+- **Authentication Delegation Flow** - JWT validation through API Gateway
+- **Redis Geospatial Queries** - Real-time nearby driver search with 5km radius
+- **Event-Driven Architecture** - Kafka-powered ride acceptance workflow
+- **WebSocket Real-Time Communication** - Instant driver notifications
+- **End-to-End Request Flow** - From passenger booking to driver acceptance
+
 ---

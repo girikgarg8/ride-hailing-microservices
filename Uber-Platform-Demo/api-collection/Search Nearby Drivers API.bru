@@ -1,0 +1,27 @@
+meta {
+  name: Search Nearby Drivers API
+  type: http
+  seq: 10
+}
+
+post {
+  url: http://{{gateway_public_ip}}:9001/api/v1/location/nearby/drivers
+  body: json
+  auth: inherit
+}
+
+headers {
+  Cookie: JwtToken=eyJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE3Njg3NjUwMTAsImV4cCI6MTc2ODc2ODYxMCwic3ViIjoiZHJpdmVyMUB1YmVyLmNvbSJ9.G1Bz-DwljwSCXjW-yi1T-JU5heJwuPNmIy-WtMXnTdk; Path=/; Max-Age=3600; Expires=Sun, 18 Jan 2026 20:36:50 GMT; HttpOnly
+}
+
+body:json {
+  {
+    "latitude": 37.7749,
+    "longitude": -122.4194
+  }
+}
+
+settings {
+  encodeUrl: false
+  timeout: 0
+}

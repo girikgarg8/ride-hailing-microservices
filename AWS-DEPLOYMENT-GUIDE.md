@@ -32,9 +32,10 @@ While 99.99% of engineers only talk about microservices, **you're building and d
 6. **Uber-Socket-Service** - Port 8080 (Private) - WebSocket + Kafka producer
 7. **Uber-Review-Service** - Port 7272 (Private) - Reviews (CRUD)
 8. **Uber-Entity-Service** - (Migration Utility) - Shared entities + Flyway migrations (not a web service)
+9. **Uber-Driver-WebSocket-Client** - Port 3000 (Public) - Driver interface for ride requests
 
 ### **Infrastructure:**
-- **VPC**: Public subnet (Gateway, Eureka) + Private subnet (Backend services)
+- **VPC**: Public subnet (Gateway, Eureka, Client) + Private subnet (Backend services)
 - **RDS MySQL**: Booking, Review, Auth data
 - **ElastiCache Redis**: Geospatial driver locations
 - **Amazon MSK / Self-hosted Kafka**: Event streaming
@@ -44,7 +45,7 @@ While 99.99% of engineers only talk about microservices, **you're building and d
 
 ### **Architecture Diagram:**
 ```
-Internet → ALB → API Gateway (Public) → Eureka (Public)
+Internet → ALB → API Gateway (Public) → Eureka (Public) → Client (Public)
                         ↓
             ┌───────────┴───────────┐
             │   Private Subnet      │
@@ -89,56 +90,6 @@ aws sts get-caller-identity
 
 ## 🛠️ AWS Infrastructure Setup (CLI Commands)
 
-### **🚀 Quick Setup Script (All-in-One)**
-
-For fastest setup, you can run this complete script:
-
-```bash
-# Create and run the complete infrastructure setup script
-cat > setup-uber-infrastructure.sh << 'EOF'
-#!/bin/bash
-set -e
-
-# Configuration
-export PROJECT_NAME="uber-platform"
-export REGION="ap-south-1"  # Asia Pacific (Mumbai)
-export AZ1="${REGION}a"
-export AZ2="${REGION}b"
-
-echo "🚀 Starting Uber Platform Infrastructure Setup..."
-echo "Project: $PROJECT_NAME"
-echo "Region: $REGION"
-echo ""
-
-# Phase 1: VPC & Networking
-echo "📡 Phase 1: Creating VPC & Networking..."
-# [All the VPC, subnet, NAT, route table commands from below]
-
-# Phase 2: Security Groups  
-echo "🔒 Phase 2: Creating Security Groups..."
-# [All the security group commands from below]
-
-# Phase 3: Databases & Caching
-echo "🗄️ Phase 3: Creating Databases & Caching..."
-# [All the RDS, Redis, MSK commands from below]
-
-# Phase 4: EC2 Instances
-echo "💻 Phase 4: Launching EC2 Instances..."
-# [All the EC2 commands from below]
-
-# Phase 5: CloudWatch
-echo "📊 Phase 5: Setting up CloudWatch..."
-# [All the CloudWatch commands from below]
-
-echo ""
-echo "🎉 Infrastructure setup complete!"
-echo "📋 Check infrastructure-summary.txt for all resource IDs"
-echo "⏳ Wait 10-20 minutes for RDS, Redis, and MSK to become available"
-EOF
-
-chmod +x setup-uber-infrastructure.sh
-./setup-uber-infrastructure.sh
-```
 
 ### **📋 Manual Step-by-Step Setup**
 
@@ -224,8 +175,12 @@ NAT_EIP=$(aws ec2 allocate-address \
 NAT_GW_ID=$(aws ec2 create-nat-gateway \
   --subnet-id $PUBLIC_SUBNET_1 \
   --allocation-id $NAT_EIP \
-  --tag-specifications "ResourceType=nat-gateway,Tags=[{Key=Name,Value=${PROJECT_NAME}-nat-gw}]" \
   --query 'NatGateway.NatGatewayId' --output text)
+
+# Tag NAT Gateway after creation (NAT Gateways don't support tagging during creation)
+aws ec2 create-tags \
+  --resources $NAT_GW_ID \
+  --tags Key=Name,Value=${PROJECT_NAME}-nat-gw
 
 # Wait for NAT Gateway to become available
 aws ec2 wait nat-gateway-available --nat-gateway-ids $NAT_GW_ID
@@ -258,8 +213,8 @@ aws ec2 associate-route-table --subnet-id $PRIVATE_SUBNET_2 --route-table-id $PR
 
 #### **Step 5: Create Security Groups**
 ```bash
-# Get your public IP for SSH access
-MY_IP=$(curl -s https://checkip.amazonaws.com)/32
+# Allow SSH access from anywhere (demo project - acceptable risk)
+MY_IP="0.0.0.0/0"
 
 # Create ALB Security Group (optional - for production)
 ALB_SG=$(aws ec2 create-security-group \
@@ -284,7 +239,18 @@ GATEWAY_SG=$(aws ec2 create-security-group \
 # Gateway Security Group Rules
 aws ec2 authorize-security-group-ingress --group-id $GATEWAY_SG --protocol tcp --port 22 --cidr $MY_IP
 aws ec2 authorize-security-group-ingress --group-id $GATEWAY_SG --protocol tcp --port 9001 --cidr 0.0.0.0/0
-aws ec2 authorize-security-group-ingress --group-id $GATEWAY_SG --protocol tcp --port 3000 --cidr 0.0.0.0/0  # WebSocket client
+
+# Create WebSocket Client Security Group (Public Subnet)
+CLIENT_SG=$(aws ec2 create-security-group \
+  --group-name "${PROJECT_NAME}-client-sg" \
+  --description "Security group for WebSocket Client" \
+  --vpc-id $VPC_ID \
+  --tag-specifications "ResourceType=security-group,Tags=[{Key=Name,Value=${PROJECT_NAME}-client-sg}]" \
+  --query 'GroupId' --output text)
+
+# Client Security Group Rules
+aws ec2 authorize-security-group-ingress --group-id $CLIENT_SG --protocol tcp --port 22 --cidr $MY_IP
+aws ec2 authorize-security-group-ingress --group-id $CLIENT_SG --protocol tcp --port 3000 --cidr 0.0.0.0/0  # HTTP server for client
 
 # Create Eureka Security Group (Public Subnet)
 EUREKA_SG=$(aws ec2 create-security-group \
@@ -296,7 +262,7 @@ EUREKA_SG=$(aws ec2 create-security-group \
 
 # Eureka Security Group Rules
 aws ec2 authorize-security-group-ingress --group-id $EUREKA_SG --protocol tcp --port 22 --cidr $MY_IP
-aws ec2 authorize-security-group-ingress --group-id $EUREKA_SG --protocol tcp --port 8761 --source-group $GATEWAY_SG
+aws ec2 authorize-security-group-ingress --group-id $EUREKA_SG --protocol tcp --port 8761 --cidr 0.0.0.0/0  # Dashboard access for demo
 
 # Create Private Services Security Group
 PRIVATE_SG=$(aws ec2 create-security-group \
@@ -315,8 +281,6 @@ aws ec2 authorize-security-group-ingress --group-id $PRIVATE_SG --protocol tcp -
 aws ec2 authorize-security-group-ingress --group-id $PRIVATE_SG --protocol tcp --port 7272 --source-group $GATEWAY_SG  # Review
 aws ec2 authorize-security-group-ingress --group-id $PRIVATE_SG --protocol tcp --port 8761 --source-group $EUREKA_SG   # Eureka
 
-# Allow Eureka access from private services
-aws ec2 authorize-security-group-ingress --group-id $EUREKA_SG --protocol tcp --port 8761 --source-group $PRIVATE_SG
 
 # Create RDS Security Group
 RDS_SG=$(aws ec2 create-security-group \
@@ -350,7 +314,7 @@ KAFKA_SG=$(aws ec2 create-security-group \
   --query 'GroupId' --output text)
 
 # Kafka Security Group Rules
-aws ec2 authorize-security-group-ingress --group-id $KAFKA_SG --protocol tcp --port 9098 --source-group $PRIVATE_SG
+aws ec2 authorize-security-group-ingress --group-id $KAFKA_SG --protocol tcp --port 9092 --source-group $PRIVATE_SG
 
 ```
 
@@ -361,6 +325,7 @@ aws ec2 authorize-security-group-ingress --group-id $KAFKA_SG --protocol tcp --p
 3. **Bastion Access**: SSH to private instances only through Gateway instance
 4. **Service-to-Service**: All inter-service communication uses security group references
 5. **Database Isolation**: RDS/Redis/Kafka only accessible from backend services
+6. **Demo Accessibility**: Eureka dashboard (port 8761) is publicly accessible for demonstration purposes - restrict in production
 
 ---
 
@@ -380,13 +345,13 @@ aws rds create-db-subnet-group \
 ```bash
 # Create RDS MySQL Instance
 RDS_INSTANCE_ID="${PROJECT_NAME}-mysql-db"
-RDS_PASSWORD="YourSecurePassword123!"  # CHANGE THIS to your own secure password
+RDS_PASSWORD="girikgarg"  # CHANGE THIS to your own secure password
 
 aws rds create-db-instance \
   --db-instance-identifier $RDS_INSTANCE_ID \
   --db-instance-class db.t3.micro \
   --engine mysql \
-  --engine-version 8.0.35 \
+  --engine-version 8.0.44 \
   --master-username admin \
   --master-user-password $RDS_PASSWORD \
   --allocated-storage 20 \
@@ -433,58 +398,116 @@ aws elasticache create-cache-cluster \
 MSK_CLUSTER_NAME="${PROJECT_NAME}-kafka-cluster"
 
 # Create MSK cluster
+# Note: AWS MSK requires broker nodes to be a multiple of AZs (2 AZs = minimum 2 brokers)
 MSK_ARN=$(aws kafka create-cluster \
   --cluster-name $MSK_CLUSTER_NAME \
   --kafka-version "3.7.x" \
   --number-of-broker-nodes 2 \
-  --broker-node-group-info "InstanceType=kafka.t3.small,ClientSubnets=[$PRIVATE_SUBNET_1,$PRIVATE_SUBNET_2],SecurityGroups=[$KAFKA_SG],StorageInfo={EBSStorageInfo={VolumeSize=10}}" \
+  --broker-node-group-info "InstanceType=kafka.t3.small,ClientSubnets=[$PRIVATE_SUBNET_1,$PRIVATE_SUBNET_2],SecurityGroups=[$KAFKA_SG],StorageInfo={EbsStorageInfo={VolumeSize=10}}" \
   --encryption-info "EncryptionInTransit={ClientBroker=PLAINTEXT,InCluster=false}" \
   --tags Name=$MSK_CLUSTER_NAME \
   --query 'ClusterArn' --output text)
 
-# Note: MSK creation takes 15-20 minutes
+# Note: MSK creation takes 15-20 minutes (AWS MSK requires minimum 2 brokers across 2 AZs)
 ```
 
-#### **Step 6: Wait for Resources and Get Endpoints**
+#### **Step 6: Continue with EC2 Setup (Don't Wait for Databases)**
 ```bash
-# Wait for all resources in parallel (optional - you can skip this and check later)
-wait_for_rds() {
-    aws rds wait db-instance-available --db-instance-identifier $RDS_INSTANCE_ID
-}
-
-wait_for_redis() {
-    aws elasticache wait cache-cluster-available --cache-cluster-id $REDIS_CLUSTER_ID
-}
-
-wait_for_msk() {
-    aws kafka wait cluster-active --cluster-arn $MSK_ARN
-}
-
-# Start parallel wait for all resources
-wait_for_rds &
-wait_for_redis &
-wait_for_msk &
-wait
-
-# Get endpoints once ready
-RDS_ENDPOINT=$(aws rds describe-db-instances \
-  --db-instance-identifier $RDS_INSTANCE_ID \
-  --query 'DBInstances[0].Endpoint.Address' --output text)
-
-REDIS_ENDPOINT=$(aws elasticache describe-cache-clusters \
-  --cache-cluster-id $REDIS_CLUSTER_ID \
-  --show-cache-node-info \
-  --query 'CacheClusters[0].CacheNodes[0].Endpoint.Address' --output text)
-
-# MSK Brokers (available after cluster is active)
-# Use: aws kafka get-bootstrap-brokers --cluster-arn $MSK_ARN --query 'BootstrapBrokerStringVpcConnectivityOnly'
+echo "🚀 Database resources are provisioning in the background..."
+echo "📋 RDS: $RDS_INSTANCE_ID (5-10 minutes)"
+echo "📋 Redis: $REDIS_CLUSTER_ID (3-5 minutes)" 
+echo "📋 MSK: $MSK_CLUSTER_NAME (15-20 minutes)"
+echo ""
+echo "⏭️  Continuing with EC2 setup while databases provision..."
+echo "💡 We'll get database endpoints later when needed"
 ```
 
 ---
 
 ### **Phase 3: EC2 Instances (10 mins)**
 
-#### **Step 1: Create Key Pair**
+#### **Step 1: Create IAM Role for EC2 Instances (CloudWatch & Resource Access)**
+```bash
+# Create IAM role for EC2 instances to access CloudWatch and AWS services
+cat > /tmp/trust-policy.json << EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "ec2.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+EOF
+
+# Create the IAM role
+aws iam create-role \
+  --role-name "${PROJECT_NAME}-ec2-role" \
+  --assume-role-policy-document file:///tmp/trust-policy.json
+
+# Create comprehensive IAM policy for CloudWatch and resource discovery
+cat > /tmp/ec2-policy.json << EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents",
+        "logs:DescribeLogStreams",
+        "logs:DescribeLogGroups",
+        "ec2:DescribeVolumes",
+        "ec2:DescribeTags",
+        "ec2:DescribeInstances",
+        "cloudwatch:PutMetricData",
+        "rds:DescribeDBInstances",
+        "elasticache:DescribeCacheClusters",
+        "kafka:ListClusters",
+        "kafka:DescribeCluster",
+        "kafka:GetBootstrapBrokers"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+EOF
+
+# Create and attach the policy
+aws iam create-policy \
+  --policy-name "${PROJECT_NAME}-ec2-policy" \
+  --policy-document file:///tmp/ec2-policy.json
+
+# Get policy ARN
+POLICY_ARN=$(aws iam list-policies \
+  --query "Policies[?PolicyName=='${PROJECT_NAME}-ec2-policy'].Arn" --output text)
+
+# Attach policy to role
+aws iam attach-role-policy \
+  --role-name "${PROJECT_NAME}-ec2-role" \
+  --policy-arn $POLICY_ARN
+
+# Create instance profile
+aws iam create-instance-profile \
+  --instance-profile-name "${PROJECT_NAME}-ec2-profile"
+
+# Add role to instance profile
+aws iam add-role-to-instance-profile \
+  --instance-profile-name "${PROJECT_NAME}-ec2-profile" \
+  --role-name "${PROJECT_NAME}-ec2-role"
+
+# Clean up temp files
+rm -f /tmp/trust-policy.json /tmp/ec2-policy.json
+
+echo "✅ IAM role and instance profile created for CloudWatch and resource discovery"
+```
+
+#### **Step 2: Create Key Pair**
 ```bash
 # Create SSH key pair and save private key
 aws ec2 create-key-pair --key-name "${PROJECT_NAME}-key" \
@@ -494,30 +517,66 @@ aws ec2 create-key-pair --key-name "${PROJECT_NAME}-key" \
 chmod 400 ${PROJECT_NAME}-key.pem
 ```
 
-#### **Step 2: Create User Data Scripts**
+#### **Step 3: Create User Data Scripts**
 ```bash
 # Create User Data script for all instances
 cat > /tmp/user-data.sh << 'EOF'
 #!/bin/bash
 yum update -y
-yum install java-17-amazon-corretto python3 mysql -y
+yum install -y java-17-amazon-corretto-devel python3 mysql
 
-# Install CloudWatch Agent
-wget https://s3.amazonaws.com/amazoncloudwatch-agent/amazon_linux/amd64/latest/amazon-cloudwatch-agent.rpm
-rpm -U ./amazon-cloudwatch-agent.rpm
+# Install CloudWatch Agent via YUM (more reliable)
+yum install -y amazon-cloudwatch-agent
 
-# Create CloudWatch config
+# Create CloudWatch config with separate log groups per service
 mkdir -p /opt/aws/amazon-cloudwatch-agent/etc
-cat > /opt/aws/amazon-cloudwatch-agent/etc/config.json << 'CWEOF'
+tee /opt/aws/amazon-cloudwatch-agent/etc/config.json > /dev/null << 'CWEOF'
 {
   "logs": {
     "logs_collected": {
       "files": {
         "collect_list": [
           {
-            "file_path": "/var/log/uber-services/*.log",
-            "log_group_name": "/aws/uber-microservices",
-            "log_stream_name": "{instance_id}"
+            "file_path": "/var/log/uber-services/eureka.log",
+            "log_group_name": "/aws/uber-microservices/eureka",
+            "log_stream_name": "{instance_id}",
+            "timezone": "UTC"
+          },
+          {
+            "file_path": "/var/log/uber-services/gateway.log",
+            "log_group_name": "/aws/uber-microservices/gateway",
+            "log_stream_name": "{instance_id}",
+            "timezone": "UTC"
+          },
+          {
+            "file_path": "/var/log/uber-services/auth.log",
+            "log_group_name": "/aws/uber-microservices/auth",
+            "log_stream_name": "{instance_id}",
+            "timezone": "UTC"
+          },
+          {
+            "file_path": "/var/log/uber-services/booking.log",
+            "log_group_name": "/aws/uber-microservices/booking",
+            "log_stream_name": "{instance_id}",
+            "timezone": "UTC"
+          },
+          {
+            "file_path": "/var/log/uber-services/location.log",
+            "log_group_name": "/aws/uber-microservices/location",
+            "log_stream_name": "{instance_id}",
+            "timezone": "UTC"
+          },
+          {
+            "file_path": "/var/log/uber-services/socket.log",
+            "log_group_name": "/aws/uber-microservices/socket",
+            "log_stream_name": "{instance_id}",
+            "timezone": "UTC"
+          },
+          {
+            "file_path": "/var/log/uber-services/review.log",
+            "log_group_name": "/aws/uber-microservices/review",
+            "log_stream_name": "{instance_id}",
+            "timezone": "UTC"
           }
         ]
       }
@@ -534,13 +593,17 @@ chown ec2-user:ec2-user /var/log/uber-services
 /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
   -a fetch-config -m ec2 -s \
   -c file:/opt/aws/amazon-cloudwatch-agent/etc/config.json
+
+# Enable CloudWatch agent service
+systemctl enable amazon-cloudwatch-agent
+systemctl start amazon-cloudwatch-agent
 EOF
 
 # Base64 encode the user data
 USER_DATA=$(base64 -i /tmp/user-data.sh)
 ```
 
-#### **Step 3: Launch EC2 Instances**
+#### **Step 4: Launch EC2 Instances**
 ```bash
 # Get latest Amazon Linux 2023 AMI ID
 AMI_ID=$(aws ec2 describe-images \
@@ -556,6 +619,7 @@ GATEWAY_INSTANCE=$(aws ec2 run-instances \
   --key-name "${PROJECT_NAME}-key" \
   --security-group-ids $GATEWAY_SG \
   --subnet-id $PUBLIC_SUBNET_1 \
+  --iam-instance-profile Name="${PROJECT_NAME}-ec2-profile" \
   --user-data $USER_DATA \
   --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${PROJECT_NAME}-gateway}]" \
   --query 'Instances[0].InstanceId' --output text)
@@ -568,8 +632,22 @@ EUREKA_INSTANCE=$(aws ec2 run-instances \
   --key-name "${PROJECT_NAME}-key" \
   --security-group-ids $EUREKA_SG \
   --subnet-id $PUBLIC_SUBNET_2 \
+  --iam-instance-profile Name="${PROJECT_NAME}-ec2-profile" \
   --user-data $USER_DATA \
   --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${PROJECT_NAME}-eureka}]" \
+  --query 'Instances[0].InstanceId' --output text)
+
+# Launch WebSocket Client Instance (Public Subnet)
+CLIENT_INSTANCE=$(aws ec2 run-instances \
+  --image-id $AMI_ID \
+  --count 1 \
+  --instance-type t3.micro \
+  --key-name "${PROJECT_NAME}-key" \
+  --security-group-ids $CLIENT_SG \
+  --subnet-id $PUBLIC_SUBNET_1 \
+  --iam-instance-profile Name="${PROJECT_NAME}-ec2-profile" \
+  --user-data $USER_DATA \
+  --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${PROJECT_NAME}-client}]" \
   --query 'Instances[0].InstanceId' --output text)
 
 # Launch Backend Services Instance (Private Subnet)
@@ -580,18 +658,25 @@ BACKEND_INSTANCE=$(aws ec2 run-instances \
   --key-name "${PROJECT_NAME}-key" \
   --security-group-ids $PRIVATE_SG \
   --subnet-id $PRIVATE_SUBNET_1 \
+  --iam-instance-profile Name="${PROJECT_NAME}-ec2-profile" \
   --user-data $USER_DATA \
   --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${PROJECT_NAME}-backend}]" \
   --query 'Instances[0].InstanceId' --output text)
 
 # Clean up temp file
 rm -f /tmp/user-data.sh
+
+echo "✅ All EC2 instances launched with CloudWatch agent and IAM roles"
+
+# Wait for IAM role to propagate
+echo "⏳ Waiting for IAM roles to propagate (30 seconds)..."
+sleep 30
 ```
 
-#### **Step 4: Wait for Instances and Get IPs**
+#### **Step 5: Wait for Instances and Get IPs**
 ```bash
 # Wait for instances to be running
-aws ec2 wait instance-running --instance-ids $GATEWAY_INSTANCE $EUREKA_INSTANCE $BACKEND_INSTANCE
+aws ec2 wait instance-running --instance-ids $GATEWAY_INSTANCE $EUREKA_INSTANCE $CLIENT_INSTANCE $BACKEND_INSTANCE
 
 # Get instance IPs
 GATEWAY_PUBLIC_IP=$(aws ec2 describe-instances \
@@ -610,10 +695,73 @@ EUREKA_PRIVATE_IP=$(aws ec2 describe-instances \
   --instance-ids $EUREKA_INSTANCE \
   --query 'Reservations[0].Instances[0].PrivateIpAddress' --output text)
 
+CLIENT_PUBLIC_IP=$(aws ec2 describe-instances \
+  --instance-ids $CLIENT_INSTANCE \
+  --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
+
+CLIENT_PRIVATE_IP=$(aws ec2 describe-instances \
+  --instance-ids $CLIENT_INSTANCE \
+  --query 'Reservations[0].Instances[0].PrivateIpAddress' --output text)
+
 BACKEND_PRIVATE_IP=$(aws ec2 describe-instances \
   --instance-ids $BACKEND_INSTANCE \
   --query 'Reservations[0].Instances[0].PrivateIpAddress' --output text)
+
+echo ""
+echo "✅ EC2 instances are ready!"
+echo "🔄 Now let's get database endpoints (they should be ready by now)..."
 ```
+
+#### **Step 6: Get Database Endpoints (Wait if Needed)**
+```bash
+# Function to wait for and get database endpoints
+get_database_endpoints() {
+    echo "🔍 Checking database status..."
+    
+    # Wait for RDS if not ready
+    echo "⏳ Waiting for RDS to be available..."
+    aws rds wait db-instance-available --db-instance-identifier $RDS_INSTANCE_ID
+    RDS_ENDPOINT=$(aws rds describe-db-instances \
+      --db-instance-identifier $RDS_INSTANCE_ID \
+      --query 'DBInstances[0].Endpoint.Address' --output text)
+    echo "✅ RDS Ready: $RDS_ENDPOINT"
+    
+    # Wait for Redis if not ready
+    echo "⏳ Waiting for Redis to be available..."
+    aws elasticache wait cache-cluster-available --cache-cluster-id $REDIS_CLUSTER_ID
+    REDIS_ENDPOINT=$(aws elasticache describe-cache-clusters \
+      --cache-cluster-id $REDIS_CLUSTER_ID \
+      --show-cache-node-info \
+      --query 'CacheClusters[0].CacheNodes[0].Endpoint.Address' --output text)
+    echo "✅ Redis Ready: $REDIS_ENDPOINT"
+    
+    # Wait for MSK if not ready
+    echo "⏳ Waiting for MSK to be active..."
+    while true; do
+        MSK_STATE=$(aws kafka describe-cluster --cluster-arn $MSK_ARN --query 'ClusterInfo.State' --output text 2>/dev/null || echo "CREATING")
+        if [ "$MSK_STATE" = "ACTIVE" ]; then
+            echo "✅ MSK is now ACTIVE"
+            break
+        else
+            echo "   MSK Status: $MSK_STATE (waiting 30 seconds...)"
+            sleep 30
+        fi
+    done
+    
+    MSK_BROKERS=$(aws kafka get-bootstrap-brokers \
+      --cluster-arn $MSK_ARN \
+      --query 'BootstrapBrokerStringVpcConnectivityOnly' --output text)
+    echo "✅ MSK Ready: $MSK_BROKERS"
+    
+    echo ""
+    echo "🎉 All database resources are ready!"
+}
+
+# Call the function to get endpoints
+get_database_endpoints
+```
+
+---
 
 ### **Phase 4: CloudWatch Logs Setup**
 
@@ -621,22 +769,217 @@ BACKEND_PRIVATE_IP=$(aws ec2 describe-instances \
 ```bash
 # Create CloudWatch log groups for all services
 LOG_GROUPS=(
+  "/aws/uber-microservices/eureka"
   "/aws/uber-microservices/gateway"
   "/aws/uber-microservices/auth"
   "/aws/uber-microservices/booking"
   "/aws/uber-microservices/location"
   "/aws/uber-microservices/socket"
   "/aws/uber-microservices/review"
-  "/aws/uber-microservices/eureka"
-  "/aws/uber-microservices/entity"
 )
 
 for LOG_GROUP in "${LOG_GROUPS[@]}"; do
-  aws logs create-log-group --log-group-name "$LOG_GROUP"
+  aws logs create-log-group --log-group-name "$LOG_GROUP" 2>/dev/null || echo "Log group $LOG_GROUP already exists"
+  
+  # Set retention policy (optional - 7 days)
+  aws logs put-retention-policy \
+    --log-group-name "$LOG_GROUP" \
+    --retention-in-days 7 2>/dev/null || echo "Retention policy set for $LOG_GROUP"
 done
 ```
 
 **💡 Note:** CloudWatch agent is automatically installed via User Data scripts in the EC2 instance configurations above.
+
+### **🔧 Manual IAM Role Attachment (If Needed)**
+
+If you need to attach IAM roles to existing instances:
+
+```bash
+# Attach IAM roles to all instances (run from local terminal)
+echo "🔧 Attaching IAM roles to all EC2 instances..."
+
+# Get instance IDs
+GATEWAY_INSTANCE_ID=$(aws ec2 describe-instances \
+  --filters "Name=tag:Name,Values=uber-platform-gateway" "Name=instance-state-name,Values=running" \
+  --query 'Reservations[0].Instances[0].InstanceId' --output text)
+
+EUREKA_INSTANCE_ID=$(aws ec2 describe-instances \
+  --filters "Name=tag:Name,Values=uber-platform-eureka" "Name=instance-state-name,Values=running" \
+  --query 'Reservations[0].Instances[0].InstanceId' --output text)
+
+CLIENT_INSTANCE_ID=$(aws ec2 describe-instances \
+  --filters "Name=tag:Name,Values=uber-platform-client" "Name=instance-state-name,Values=running" \
+  --query 'Reservations[0].Instances[0].InstanceId' --output text)
+
+BACKEND_INSTANCE_ID=$(aws ec2 describe-instances \
+  --filters "Name=tag:Name,Values=uber-platform-backend" "Name=instance-state-name,Values=running" \
+  --query 'Reservations[0].Instances[0].InstanceId' --output text)
+
+# Attach IAM instance profile to all instances
+for INSTANCE_ID in $GATEWAY_INSTANCE_ID $EUREKA_INSTANCE_ID $CLIENT_INSTANCE_ID $BACKEND_INSTANCE_ID; do
+  if [ "$INSTANCE_ID" != "None" ] && [ ! -z "$INSTANCE_ID" ]; then
+    echo "Attaching IAM role to instance: $INSTANCE_ID"
+    aws ec2 associate-iam-instance-profile \
+      --instance-id $INSTANCE_ID \
+      --iam-instance-profile Name="uber-platform-ec2-profile" 2>/dev/null || echo "IAM role already attached to $INSTANCE_ID"
+  fi
+done
+
+echo "✅ IAM roles attached to all instances"
+echo "⏳ Wait 30 seconds for IAM roles to propagate..."
+sleep 30
+```
+
+### **🔧 Manual CloudWatch Agent Installation (If Needed)**
+
+If CloudWatch agent wasn't installed via User Data:
+
+```bash
+# SSH to each instance and run:
+sudo yum update -y
+sudo yum install -y amazon-cloudwatch-agent
+
+# Create log directory
+sudo mkdir -p /var/log/uber-services
+sudo chown ec2-user:ec2-user /var/log/uber-services
+
+# Create appropriate CloudWatch config for each instance:
+# - Eureka: monitors all service logs
+# - Gateway: monitors gateway.log only  
+# - Backend: monitors all backend service logs
+# - Client: no CloudWatch needed
+
+# For Gateway instance:
+sudo tee /opt/aws/amazon-cloudwatch-agent/etc/config.json > /dev/null << 'EOF'
+{
+  "logs": {
+    "logs_collected": {
+      "files": {
+        "collect_list": [
+          {
+            "file_path": "/var/log/uber-services/gateway.log",
+            "log_group_name": "/aws/uber-microservices/gateway",
+            "log_stream_name": "{instance_id}",
+            "timezone": "UTC"
+          }
+        ]
+      }
+    }
+  }
+}
+EOF
+
+# Start CloudWatch agent
+sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+  -a fetch-config -m ec2 -s \
+  -c file:/opt/aws/amazon-cloudwatch-agent/etc/config.json
+
+sudo systemctl enable amazon-cloudwatch-agent
+sudo systemctl start amazon-cloudwatch-agent
+```
+
+### **🔧 Troubleshooting Service Discovery Issues**
+
+#### **Problem: Services Register with 127.0.0.1 Instead of Private IP**
+
+**Symptoms:**
+- Gateway shows "Connection refused" errors when calling backend services
+- Services appear in Eureka but with `hostName: 127.0.0.1` and `ipAddr: 127.0.0.1`
+- 500 Internal Server Error when calling APIs through Gateway
+
+**Root Cause:**
+Services are registering with Eureka using localhost (127.0.0.1) instead of their actual private IP addresses, making them unreachable from other instances.
+
+**Solution:**
+Restart services with explicit IP configuration:
+
+```bash
+# For ANY service that shows 127.0.0.1 in Eureka, restart with:
+pkill -f "ServiceName"
+
+nohup java -jar \
+  -Dspring.profiles.active=prod \
+  -Dserver.address=0.0.0.0 \
+  -Deureka.instance.prefer-ip-address=true \
+  -Deureka.instance.ip-address=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4) \
+  -Deureka.instance.hostname=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4) \
+  ServiceName.jar > /var/log/uber-services/service.log 2>&1 &
+```
+
+**Key Parameters:**
+- `-Deureka.instance.prefer-ip-address=true` - Use IP instead of hostname
+- `-Deureka.instance.ip-address=$(...)` - Set explicit IP address  
+- `-Deureka.instance.hostname=$(...)` - Set hostname to IP as well
+- `-Dserver.address=0.0.0.0` - Bind to all interfaces (for Location Service)
+
+**Verification:**
+```bash
+# Check Eureka registration shows correct private IP
+curl -s http://<eureka-ip>:8761/eureka/apps/SERVICE-NAME | grep -E "(hostName|ipAddr)"
+# Should show: <hostName>10.0.x.x</hostName> and <ipAddr>10.0.x.x</ipAddr>
+```
+
+#### **Problem: Location Service Cannot Connect to Redis**
+
+**Symptoms:**
+- Location Service returns `false` for save operations
+- Logs show `java.net.ConnectException: Connection refused`
+- Redis connectivity test passes but service still fails
+
+**Solution:**
+Restart Location Service with explicit Redis configuration:
+
+```bash
+pkill -f "Uber-Location-Service"
+
+nohup java -jar \
+  -Dspring.profiles.active=prod \
+  -Dserver.address=0.0.0.0 \
+  -Deureka.instance.prefer-ip-address=true \
+  -Deureka.instance.ip-address=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4) \
+  -Deureka.instance.hostname=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4) \
+  -Dspring.data.redis.host=$REDIS_ENDPOINT \
+  -Dspring.data.redis.port=6379 \
+  Uber-Location-Service-0.0.1-SNAPSHOT.jar > /var/log/uber-services/location.log 2>&1 &
+```
+
+### **🔧 Troubleshooting CloudWatch Agent**
+
+If CloudWatch agent fails or needs reconfiguration:
+
+#### **Restart CloudWatch Agent (if needed)**
+```bash
+# Stop and restart CloudWatch agent
+sudo systemctl stop amazon-cloudwatch-agent
+
+# Restart with configuration
+sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+  -a fetch-config -m ec2 -s \
+  -c file:/opt/aws/amazon-cloudwatch-agent/etc/config.json
+
+# Check status
+sudo systemctl status amazon-cloudwatch-agent
+
+# Check logs
+sudo tail -20 /opt/aws/amazon-cloudwatch-agent/logs/amazon-cloudwatch-agent.log
+```
+
+#### **Kill Process on Port (Alternative Methods)**
+```bash
+# Method 1: Kill by process name (most reliable)
+pkill -f "Uber-Service-Discovery"
+pkill -f "eureka"
+
+# Method 2: Using netstat (if lsof not available)
+PID=$(netstat -tulpn 2>/dev/null | grep :8761 | awk '{print $7}' | cut -d'/' -f1)
+if [ ! -z "$PID" ]; then
+    kill -9 $PID
+    echo "Killed process $PID on port 8761"
+fi
+
+# Verify port is free
+netstat -tulpn | grep :8761 || echo "Port 8761 is free"
+```
 
 ---
 
@@ -663,6 +1006,7 @@ NAT_EIP=$NAT_EIP
 ALB_SG=$ALB_SG
 GATEWAY_SG=$GATEWAY_SG
 EUREKA_SG=$EUREKA_SG
+CLIENT_SG=$CLIENT_SG
 PRIVATE_SG=$PRIVATE_SG
 RDS_SG=$RDS_SG
 REDIS_SG=$REDIS_SG
@@ -671,6 +1015,7 @@ KAFKA_SG=$KAFKA_SG
 # EC2 Instances
 GATEWAY_INSTANCE=$GATEWAY_INSTANCE
 EUREKA_INSTANCE=$EUREKA_INSTANCE
+CLIENT_INSTANCE=$CLIENT_INSTANCE
 BACKEND_INSTANCE=$BACKEND_INSTANCE
 
 # Instance IPs
@@ -678,6 +1023,8 @@ GATEWAY_PUBLIC_IP=$GATEWAY_PUBLIC_IP
 GATEWAY_PRIVATE_IP=$GATEWAY_PRIVATE_IP
 EUREKA_PUBLIC_IP=$EUREKA_PUBLIC_IP
 EUREKA_PRIVATE_IP=$EUREKA_PRIVATE_IP
+CLIENT_PUBLIC_IP=$CLIENT_PUBLIC_IP
+CLIENT_PRIVATE_IP=$CLIENT_PRIVATE_IP
 BACKEND_PRIVATE_IP=$BACKEND_PRIVATE_IP
 
 # Database & Cache
@@ -786,78 +1133,148 @@ chmod 600 ~/aws-env.sh
 ```
 
 
-**📝 Environment Variable Templates by Instance:**
+**📝 Automated Environment Variable Setup:**
 
-**🖥️ Gateway Instance (Public Subnet):**
+**🎯 One-Command Setup Script (Run from LOCAL terminal):**
+
 ```bash
-# SSH to Gateway instance
-ssh -i ${PROJECT_NAME}-key.pem ec2-user@$GATEWAY_PUBLIC_IP
-
-# Create environment script
-cat > ~/aws-env.sh << EOF
+# Create automated setup script
+cat > setup-env-vars.sh << 'EOF'
 #!/bin/bash
-# API Gateway Environment Variables
+echo "🔍 Getting all AWS resource endpoints..."
+
+# Get database endpoints
+RDS_ENDPOINT=$(aws rds describe-db-instances --db-instance-identifier uber-platform-mysql-db --query 'DBInstances[0].Endpoint.Address' --output text)
+REDIS_ENDPOINT=$(aws elasticache describe-cache-clusters --cache-cluster-id uber-platform-redis-cluster --show-cache-node-info --query 'CacheClusters[0].CacheNodes[0].Endpoint.Address' --output text)
+MSK_ARN=$(aws kafka list-clusters --query "ClusterInfoList[?ClusterName=='uber-platform-kafka-cluster'].ClusterArn" --output text)
+MSK_BROKERS=$(aws kafka get-bootstrap-brokers --cluster-arn $MSK_ARN --query 'BootstrapBrokerStringVpcConnectivityOnly' --output text)
+
+# Get instance IPs
+EUREKA_PRIVATE_IP=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=uber-platform-eureka" "Name=instance-state-name,Values=running" --query 'Reservations[0].Instances[0].PrivateIpAddress' --output text)
+GATEWAY_PUBLIC_IP=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=uber-platform-gateway" "Name=instance-state-name,Values=running" --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
+CLIENT_PUBLIC_IP=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=uber-platform-client" "Name=instance-state-name,Values=running" --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
+BACKEND_PRIVATE_IP=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=uber-platform-backend" "Name=instance-state-name,Values=running" --query 'Reservations[0].Instances[0].PrivateIpAddress' --output text)
+
+# Set your password
+RDS_PASSWORD="girikgarg"  # Replace with your actual secure password
+
+echo "✅ All endpoints retrieved:"
+echo "   RDS_ENDPOINT: $RDS_ENDPOINT"
+echo "   REDIS_ENDPOINT: $REDIS_ENDPOINT"
+echo "   MSK_BROKERS: $MSK_BROKERS"
+echo "   EUREKA_PRIVATE_IP: $EUREKA_PRIVATE_IP"
+echo "   GATEWAY_PUBLIC_IP: $GATEWAY_PUBLIC_IP"
+echo "   CLIENT_PUBLIC_IP: $CLIENT_PUBLIC_IP"
+echo "   BACKEND_PRIVATE_IP: $BACKEND_PRIVATE_IP"
+
+echo ""
+echo "🚀 Setting up environment variables on all instances..."
+
+# Setup Gateway Instance
+echo "📡 Setting up Gateway instance..."
+ssh -i uber-platform-key.pem ec2-user@$GATEWAY_PUBLIC_IP << GATEWAY_EOF
+cat > ~/.bashrc_uber << 'INNER_EOF'
+#!/bin/bash
+# Gateway Environment Variables
+TOKEN=\$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" 2>/dev/null)
+export EC2_PRIVATE_IP=\$(curl -H "X-aws-ec2-metadata-token: \$TOKEN" -s http://169.254.169.254/latest/meta-data/local-ipv4 2>/dev/null)
 export EUREKA_PRIVATE_IP="$EUREKA_PRIVATE_IP"
-export EC2_PRIVATE_IP=\$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
-export JWT_SECRET="$(openssl rand -base64 32)"
+INNER_EOF
+echo "source ~/.bashrc_uber" >> ~/.bashrc
+source ~/.bashrc_uber
+echo "✅ Gateway configured"
+GATEWAY_EOF
 
-EOF
-
-chmod 600 ~/aws-env.sh
-```
-
-**🔍 Eureka Instance (Public Subnet):**
-```bash
-# SSH to Eureka instance
-ssh -i ${PROJECT_NAME}-key.pem ec2-user@$EUREKA_PUBLIC_IP
-
-# Create environment script
-cat > ~/aws-env.sh << 'EOF'
+# Setup Eureka Instance
+echo "🔍 Setting up Eureka instance..."
+ssh -i uber-platform-key.pem ec2-user@$EUREKA_PRIVATE_IP << EUREKA_EOF
+cat > ~/.bashrc_uber << 'INNER_EOF'
 #!/bin/bash
-# Eureka Server Environment Variables
-export EC2_PRIVATE_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
+# Eureka Environment Variables
+TOKEN=\$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" 2>/dev/null)
+export EC2_PRIVATE_IP=\$(curl -H "X-aws-ec2-metadata-token: \$TOKEN" -s http://169.254.169.254/latest/meta-data/local-ipv4 2>/dev/null)
+INNER_EOF
+echo "source ~/.bashrc_uber" >> ~/.bashrc
+source ~/.bashrc_uber
+echo "✅ Eureka configured"
+EUREKA_EOF
 
-EOF
-
-chmod 600 ~/aws-env.sh
-```
-
-**⚙️ Backend Services Instance (Private Subnet):**
-```bash
-# SSH to Backend instance via Gateway (bastion)
-ssh -i ${PROJECT_NAME}-key.pem -J ec2-user@$GATEWAY_PUBLIC_IP ec2-user@$BACKEND_PRIVATE_IP
-
-# Create environment script with actual values
-cat > ~/aws-env.sh << EOF
+# Setup Backend Instance (via Gateway as bastion)
+echo "⚙️ Setting up Backend instance..."
+# First copy SSH key to Gateway
+scp -i uber-platform-key.pem uber-platform-key.pem ec2-user@$GATEWAY_PUBLIC_IP:~/
+# Then setup backend via Gateway
+ssh -i uber-platform-key.pem ec2-user@$GATEWAY_PUBLIC_IP << BACKEND_EOF
+ssh -i uber-platform-key.pem ec2-user@$BACKEND_PRIVATE_IP << 'INNER_BACKEND_EOF'
+cat > ~/.bashrc_uber << 'UBER_EOF'
 #!/bin/bash
-# Backend Services Environment Variables
-
-# Database Configuration
+# Backend Environment Variables
+TOKEN=\$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" 2>/dev/null)
+export EC2_PRIVATE_IP=\$(curl -H "X-aws-ec2-metadata-token: \$TOKEN" -s http://169.254.169.254/latest/meta-data/local-ipv4 2>/dev/null)
 export RDS_ENDPOINT="$RDS_ENDPOINT"
+export REDIS_ENDPOINT="$REDIS_ENDPOINT"
+export MSK_BROKERS="$MSK_BROKERS"
+export EUREKA_PRIVATE_IP="$EUREKA_PRIVATE_IP"
 export RDS_USERNAME="admin"
 export RDS_PASSWORD="$RDS_PASSWORD"
-
-# Cache Configuration
-export ELASTICACHE_ENDPOINT="$ELASTICACHE_ENDPOINT"
-
-# Messaging Configuration
-export MSK_BROKERS="$MSK_BROKERS"
-
-# Service Discovery
-export EUREKA_PRIVATE_IP="$EUREKA_PRIVATE_IP"
-
-# Instance Configuration
-export EC2_PRIVATE_IP=\$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
-
-# Security
-export JWT_SECRET="$(openssl rand -base64 32)"
-
-# Compatibility
+export JWT_SECRET="\$(openssl rand -base64 32)"
+export ELASTICACHE_ENDPOINT="\$REDIS_ENDPOINT"
 export MYSQL_LOCAL_PASSWORD="\$RDS_PASSWORD"
+UBER_EOF
+echo "source ~/.bashrc_uber" >> ~/.bashrc
+source ~/.bashrc_uber
+echo "✅ Backend configured"
+INNER_BACKEND_EOF
+BACKEND_EOF
 
+# Setup Client Instance
+echo "🚗 Setting up Client instance..."
+ssh -i uber-platform-key.pem ec2-user@$CLIENT_PUBLIC_IP << CLIENT_EOF
+cat > ~/.bashrc_uber << 'INNER_EOF'
+#!/bin/bash
+# Client Environment Variables
+TOKEN=\$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" 2>/dev/null)
+export EC2_PRIVATE_IP=\$(curl -H "X-aws-ec2-metadata-token: \$TOKEN" -s http://169.254.169.254/latest/meta-data/local-ipv4 2>/dev/null)
+export GATEWAY_PUBLIC_IP="$GATEWAY_PUBLIC_IP"
+INNER_EOF
+echo "source ~/.bashrc_uber" >> ~/.bashrc
+source ~/.bashrc_uber
+echo "✅ Client configured"
+CLIENT_EOF
+
+echo ""
+echo "🎉 All instances configured! Environment variables are persistent across SSH sessions."
+echo ""
+echo "🔍 To verify, SSH to any instance and run: env | grep -E '(RDS|REDIS|MSK|EUREKA)'"
 EOF
 
-chmod 600 ~/aws-env.sh
+chmod +x setup-env-vars.sh
+
+# Run the setup script
+./setup-env-vars.sh
+```
+
+**✨ Benefits of This Approach:**
+- **One command does everything** - No manual exports needed
+- **Fully automated** - Retrieves endpoints and configures all instances
+- **Persistent variables** - Survive SSH disconnections  
+- **No manual copying** - Script handles all SSH connections
+- **Handles bastion host** - Automatically uses Gateway for Backend access
+
+**🎯 That's it! The automated script handles everything:**
+
+- ✅ **Retrieves all endpoints** from AWS
+- ✅ **SSH to each instance** automatically  
+- ✅ **Creates persistent environment files** (`~/.bashrc_uber`)
+- ✅ **Configures auto-loading** on SSH login
+- ✅ **Handles bastion host** for Backend instance access
+- ✅ **No manual exports needed** - Everything is automated
+
+**To verify setup worked:**
+```bash
+# SSH to any instance and check variables
+ssh -i uber-platform-key.pem ec2-user@<instance-ip>
+env | grep -E '(RDS|REDIS|MSK|EUREKA)'
 ```
 
 **🔧 Get AWS Resource Endpoints (Use values from infrastructure setup):**
@@ -882,33 +1299,6 @@ MSK_BROKERS=$(aws kafka get-bootstrap-brokers \
   --cluster-arn $MSK_ARN \
   --query 'BootstrapBrokerStringVpcConnectivityOnly' --output text)
 
-```
-
-**✅ Verify Environment Variables:**
-
-```bash
-# On each instance, verify variables are set correctly
-source ~/aws-env.sh
-
-# List all environment variables
-echo "📋 All environment variables:"
-env | grep -E "RDS|REDIS|KAFKA|EUREKA|JWT|EC2" | sort
-
-# Test AWS resource connectivity (run these tests to verify network setup)
-echo "🔍 Testing AWS resource connectivity..."
-
-# Test database connectivity
-if [ ! -z "$RDS_ENDPOINT" ]; then
-    echo "Testing RDS connection..."
-    timeout 5 bash -c "</dev/tcp/$RDS_ENDPOINT/3306" && echo "✅ RDS reachable" || echo "❌ RDS not reachable"
-fi
-
-# Test Redis connectivity (ensure ElastiCache subnet group includes your EC2 subnet)
-if [ ! -z "$ELASTICACHE_ENDPOINT" ]; then
-    echo "Testing Redis connection..."
-    # ELASTICACHE_ENDPOINT should contain only hostname (no port), port 6379 is used by default
-    timeout 5 bash -c "</dev/tcp/$ELASTICACHE_ENDPOINT/6379" && echo "✅ Redis reachable" || echo "❌ Redis not reachable"
-fi
 ```
 
 **🚀 Usage Before Starting Services:**
@@ -1061,10 +1451,13 @@ ssh -i uber-platform-key.pem ec2-user@<eureka-public-ip>
 # Load environment variables (created using templates from lines 544-676)
 source ~/aws-env.sh
 
-# Start Eureka Server
+# Start Eureka Server (logs to CloudWatch-monitored directory)
 nohup java -jar \
   -Dspring.profiles.active=prod \
-  Uber-Service-Discovery-0.0.1-SNAPSHOT.jar > eureka.log 2>&1 &
+  -Deureka.instance.prefer-ip-address=true \
+  -Deureka.instance.ip-address=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4) \
+  -Deureka.instance.hostname=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4) \
+  Uber-Service-Discovery-0.0.1-SNAPSHOT.jar > /var/log/uber-services/eureka.log 2>&1 &
 
 # CRITICAL: Wait for Eureka to fully start before proceeding
 echo "⏳ Waiting for Eureka Server to start (30 seconds)..."
@@ -1078,7 +1471,7 @@ echo "✅ Eureka health check completed"
 curl -s http://localhost:8761/ | grep -q "Eureka" && echo "✅ Eureka dashboard accessible" || echo "❌ Eureka dashboard not accessible"
 
 # Check logs for successful startup
-tail -f eureka.log
+tail -f /var/log/uber-services/eureka.log
 # Should see: "Started UberServiceDiscoveryApplication"
 # Press Ctrl+C to exit log viewing
 ```
@@ -1102,10 +1495,13 @@ source ~/aws-env.sh
 echo "🔍 Testing Eureka connectivity..."
 timeout 5 bash -c "</dev/tcp/$EUREKA_PRIVATE_IP/8761" && echo "✅ Eureka reachable" || echo "❌ Eureka not reachable - check Eureka server"
 
-# Start API Gateway
+# Start API Gateway (logs to CloudWatch-monitored directory)
 nohup java -jar \
   -Dspring.profiles.active=prod \
-  Uber-API-Gateway-0.0.1-SNAPSHOT.jar > gateway.log 2>&1 &
+  -Deureka.instance.prefer-ip-address=true \
+  -Deureka.instance.ip-address=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4) \
+  -Deureka.instance.hostname=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4) \
+  Uber-API-Gateway-0.0.1-SNAPSHOT.jar > /var/log/uber-services/gateway.log 2>&1 &
 
 # Wait for Gateway to start and register with Eureka
 echo "⏳ Waiting for Gateway to start and register (20 seconds)..."
@@ -1121,7 +1517,7 @@ curl -s http://$EUREKA_PRIVATE_IP:8761/eureka/apps/UBER-API-GATEWAY | grep -q "U
 
 # Check Gateway logs for any errors
 echo "📋 Recent Gateway logs:"
-tail -10 gateway.log
+tail -10 /var/log/uber-services/gateway.log
 ```
 
 **🎯 Success Criteria:**
@@ -1135,8 +1531,9 @@ tail -10 gateway.log
 - **Eureka Server** must be running first (service discovery)
 - **Entity Service** must complete migrations before other services  
 - **Socket Service** must start before Booking Service (Retrofit dependency)
+- **Location Service** must start before Booking Service (Retrofit dependency for nearby driver search)
 - **Auth Service** provides authentication for all services
-- **Location, Review Services** are independent
+- **Review Service** is independent
 - All services register with Eureka
 - All services depend on Entity Service for database schema (Flyway migrations)
 
@@ -1175,6 +1572,9 @@ mysql -h $RDS_ENDPOINT -u $RDS_USERNAME -p$RDS_PASSWORD -e "USE Uber_Db_Prod; SH
 echo "🔐 Starting Auth Service (JWT Authentication)..."
 nohup java -jar \
   -Dspring.profiles.active=prod \
+  -Deureka.instance.prefer-ip-address=true \
+  -Deureka.instance.ip-address=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4) \
+  -Deureka.instance.hostname=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4) \
   UberAuth-Service-0.0.1-SNAPSHOT.jar > /var/log/uber-services/auth.log 2>&1 &
 
 echo "⏳ Auth Service starting... waiting 15s"
@@ -1194,6 +1594,9 @@ fi
 echo "🔌 Starting Socket Service (WebSocket + Kafka Producer)..."
 nohup java -jar \
   -Dspring.profiles.active=prod \
+  -Deureka.instance.prefer-ip-address=true \
+  -Deureka.instance.ip-address=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4) \
+  -Deureka.instance.hostname=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4) \
   Uber-Client-Socket-Service-0.0.1-SNAPSHOT.jar > /var/log/uber-services/socket.log 2>&1 &
 
 echo "⏳ Socket Service starting... waiting 20s"
@@ -1207,10 +1610,40 @@ else
     echo "❌ Socket Service failed to start"
 fi
 
-# STEP 3D: Start Booking Service (depends on Socket Service for Retrofit communication)
-echo "📋 Starting Booking Service (MySQL + Kafka Consumer + Socket Service Client)..."
+# STEP 3D: Start Location Service FIRST (Booking Service depends on it)
+echo "📍 Starting Location Service (Redis Geospatial)..."
 nohup java -jar \
   -Dspring.profiles.active=prod \
+  -Dserver.address=0.0.0.0 \
+  -Deureka.instance.prefer-ip-address=true \
+  -Deureka.instance.ip-address=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4) \
+  -Deureka.instance.hostname=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4) \
+  -Dspring.data.redis.host=$REDIS_ENDPOINT \
+  -Dspring.data.redis.port=6379 \
+  Uber-Location-Service-0.0.1-SNAPSHOT.jar > /var/log/uber-services/location.log 2>&1 &
+
+echo "⏳ Location Service starting... waiting 30s for Eureka registration"
+sleep 30
+# Check Location Service (try actuator, fall back to process check)
+if curl -s --max-time 3 http://localhost:7477/actuator/health | grep -q "UP" 2>/dev/null; then
+    echo "✅ Location Service is UP"
+elif ps aux | grep -q "[U]ber-Location-Service"; then
+    echo "⏳ Location Service is running (no actuator endpoint)"
+else
+    echo "❌ Location Service failed to start"
+fi
+
+# Verify Location Service registered with Eureka before starting Booking Service
+echo "🔍 Verifying Location Service registered with Eureka..."
+curl -s http://$EUREKA_PRIVATE_IP:8761/eureka/apps | grep -i "UBER-LOCATION-SERVICE" && echo "✅ Location Service registered" || echo "❌ Location Service not registered yet"
+
+# STEP 3E: Start Booking Service (depends on Location Service for Retrofit communication)
+echo "📋 Starting Booking Service (MySQL + Kafka Consumer + Location Service Client)..."
+nohup java -jar \
+  -Dspring.profiles.active=prod \
+  -Deureka.instance.prefer-ip-address=true \
+  -Deureka.instance.ip-address=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4) \
+  -Deureka.instance.hostname=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4) \
   Uber-Booking-Service-0.0.1-SNAPSHOT.jar > /var/log/uber-services/booking.log 2>&1 &
 
 echo "⏳ Booking Service starting... waiting 20s"
@@ -1224,27 +1657,13 @@ else
     echo "❌ Booking Service failed to start"
 fi
 
-# STEP 3E: Start Location Service (independent - needs Redis)
-echo "📍 Starting Location Service (Redis Geospatial)..."
-nohup java -jar \
-  -Dspring.profiles.active=prod \
-  Uber-Location-Service-0.0.1-SNAPSHOT.jar > /var/log/uber-services/location.log 2>&1 &
-
-echo "⏳ Location Service starting... waiting 15s"
-sleep 15
-# Check Location Service (try actuator, fall back to process check)
-if curl -s --max-time 3 http://localhost:7477/actuator/health | grep -q "UP" 2>/dev/null; then
-    echo "✅ Location Service is UP"
-elif ps aux | grep -q "[U]ber-Location-Service"; then
-    echo "⏳ Location Service is running (no actuator endpoint)"
-else
-    echo "❌ Location Service failed to start"
-fi
-
 # STEP 3F: Start Review Service (independent - needs RDS)
 echo "⭐ Starting Review Service (MySQL CRUD)..."
 nohup java -jar \
   -Dspring.profiles.active=prod \
+  -Deureka.instance.prefer-ip-address=true \
+  -Deureka.instance.ip-address=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4) \
+  -Deureka.instance.hostname=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4) \
   uber-review-service-0.0.1-SNAPSHOT.jar > /var/log/uber-services/review.log 2>&1 &
 
 echo "⏳ Review Service starting... waiting 15s"
@@ -1324,7 +1743,7 @@ curl http://<eureka-public-ip>:8761/eureka/apps | grep "<app>"
 
 ### **Phase 5: Deploy Driver WebSocket Client**
 
-The Driver WebSocket Client provides a real-time interface for drivers to receive and respond to ride requests. It integrates with the API Gateway for authentication and WebSocket communication.
+The Driver WebSocket Client runs on a dedicated EC2 instance in the public subnet, providing a real-time interface for drivers to receive and respond to ride requests. It integrates with the API Gateway for authentication and WebSocket communication.
 
 #### **Step 1: Prepare Client Files**
 
@@ -1333,24 +1752,25 @@ The Driver WebSocket Client provides a real-time interface for drivers to receiv
 cd "Microservices-Based Ride-Hailing Platform/Uber-Driver-WebSocket-Client"
 
 # Update API Gateway URL in index.html for AWS deployment
-# Replace localhost:9001 with your Gateway public IP
-sed -i.bak 's/localhost:9001/<your-gateway-public-ip>:9001/g' index.html
+# Replace GATEWAY_PUBLIC_IP with your actual Gateway public IP
+sed -i.bak "s/GATEWAY_PUBLIC_IP/$GATEWAY_PUBLIC_IP/g" index.html
 
-# Or manually edit index.html and update these lines:
-# const API_BASE_URL = 'http://<your-gateway-public-ip>:9001';
-# const WEBSOCKET_URL = 'http://<your-gateway-public-ip>:9001/ws';
+# Or manually edit index.html and update this line:
+# const API_GATEWAY_URL = window.location.hostname === 'localhost' 
+#     ? "http://localhost:9001" 
+#     : "http://YOUR_GATEWAY_PUBLIC_IP:9001";
 ```
 
-#### **Step 2: Deploy to Gateway Instance (Public Access)**
+#### **Step 2: Deploy to Client Instance (Dedicated Instance)**
 
 ```bash
-# Upload client files to Gateway instance (public subnet)
+# Upload client files to Client instance (public subnet)
 scp -i uber-platform-key.pem -r \
   Uber-Driver-WebSocket-Client/ \
-  ec2-user@<gateway-public-ip>:~/
+  ec2-user@$CLIENT_PUBLIC_IP:~/
 
-# SSH to Gateway instance
-ssh -i uber-platform-key.pem ec2-user@<gateway-public-ip>
+# SSH to Client instance
+ssh -i uber-platform-key.pem ec2-user@$CLIENT_PUBLIC_IP
 
 # Install Python (if not already installed) for HTTP server
 sudo dnf update -y
@@ -1362,29 +1782,14 @@ chmod +x start-client.sh
 ./start-client.sh
 ```
 
-#### **Step 3: Configure Security Group for Client Access**
+#### **Step 3: Access the Driver Client**
 
 ```bash
-# From your local machine, add HTTP access to Gateway Security Group
-GATEWAY_SG_ID=$(aws ec2 describe-security-groups \
-  --filters "Name=group-name,Values=uber-platform-gateway-sg" \
-  --query 'SecurityGroups[0].GroupId' --output text)
+# Open in your browser (Client instance has its own public IP)
+open http://$CLIENT_PUBLIC_IP:3000/index.html
 
-# Add inbound rule for client access (port 3000)
-aws ec2 authorize-security-group-ingress \
-  --group-id $GATEWAY_SG_ID \
-  --protocol tcp \
-  --port 3000 \
-  --cidr 0.0.0.0/0
-
-echo "✅ Client access enabled on port 3000"
-```
-
-#### **Step 4: Access the Driver Client**
-
-```bash
-# Open in your browser
-open http://<gateway-public-ip>:3000/index.html
+# Or use the public IP directly
+echo "🚗 Driver Client URL: http://$CLIENT_PUBLIC_IP:3000/index.html"
 ```
 
 #### **Step 5: Test Driver Authentication Flow**
@@ -1467,8 +1872,8 @@ curl -b /tmp/cookies.txt \
 ### **Test WebSocket Client:**
 
 ```bash
-# Access driver client
-open http://<gateway-public-ip>:3000
+# Access driver client (now on dedicated instance)
+open http://$CLIENT_PUBLIC_IP:3000
 
 # Login with test driver credentials you created
 # Test WebSocket connection by going online
@@ -1503,14 +1908,19 @@ ps aux | grep java
 
 #### **Step 2: Stop Client Server**
 ```bash
-# SSH to Gateway instance
-ssh -i uber-platform-key.pem ec2-user@<gateway-public-ip>
+# SSH to Client instance
+ssh -i uber-platform-key.pem ec2-user@$CLIENT_PUBLIC_IP
 
 # Stop client server
 pkill -f "python.*http.server"
 pkill -f "SimpleHTTPServer"
 
-# Stop Gateway and Eureka
+# SSH to Gateway instance and stop Gateway
+ssh -i uber-platform-key.pem ec2-user@<gateway-public-ip>
+pkill -f java
+
+# SSH to Eureka instance and stop Eureka
+ssh -i uber-platform-key.pem ec2-user@<eureka-public-ip>
 pkill -f java
 ```
 
@@ -1535,8 +1945,8 @@ fi
 #### **Step 2: EC2 Instances**
 ```bash
 # Use specific instance IDs if available, otherwise search by tags
-if [ ! -z "$GATEWAY_INSTANCE" ] && [ ! -z "$EUREKA_INSTANCE" ] && [ ! -z "$BACKEND_INSTANCE" ]; then
-    INSTANCE_IDS="$GATEWAY_INSTANCE $EUREKA_INSTANCE $BACKEND_INSTANCE"
+if [ ! -z "$GATEWAY_INSTANCE" ] && [ ! -z "$EUREKA_INSTANCE" ] && [ ! -z "$CLIENT_INSTANCE" ] && [ ! -z "$BACKEND_INSTANCE" ]; then
+    INSTANCE_IDS="$GATEWAY_INSTANCE $EUREKA_INSTANCE $CLIENT_INSTANCE $BACKEND_INSTANCE"
 else
     INSTANCE_IDS=$(aws ec2 describe-instances \
       --filters "Name=tag:Name,Values=*${PROJECT_NAME}*" "Name=instance-state-name,Values=running,stopped" \
@@ -1726,6 +2136,27 @@ fi
 if [ "$VPC_ID" != "None" ] && [ ! -z "$VPC_ID" ]; then
     aws ec2 delete-vpc --vpc-id $VPC_ID
 fi
+
+# Delete IAM Resources
+aws iam remove-role-from-instance-profile \
+  --instance-profile-name "${PROJECT_NAME}-ec2-profile" \
+  --role-name "${PROJECT_NAME}-ec2-role" 2>/dev/null || true
+
+aws iam delete-instance-profile \
+  --instance-profile-name "${PROJECT_NAME}-ec2-profile" 2>/dev/null || true
+
+# Get policy ARN and detach
+POLICY_ARN=$(aws iam list-policies \
+  --query "Policies[?PolicyName=='${PROJECT_NAME}-ec2-policy'].Arn" --output text 2>/dev/null)
+
+if [ ! -z "$POLICY_ARN" ] && [ "$POLICY_ARN" != "None" ]; then
+    aws iam detach-role-policy \
+      --role-name "${PROJECT_NAME}-ec2-role" \
+      --policy-arn $POLICY_ARN 2>/dev/null || true
+    aws iam delete-policy --policy-arn $POLICY_ARN 2>/dev/null || true
+fi
+
+aws iam delete-role --role-name "${PROJECT_NAME}-ec2-role" 2>/dev/null || true
 
 # Delete Key Pair
 if [ ! -z "$KEY_NAME" ]; then

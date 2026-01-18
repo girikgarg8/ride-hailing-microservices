@@ -12,9 +12,8 @@
 
 **Script:**
 ```
-"Hi, I'm Girik. Today I'll demonstrate my Uber Microservices Platform - a microservices architecture for a ride-hailing system.
+"Hi, I'm Girik. Today I'll demonstrate my Microservices based ride hailing platform
 
-This platform implements API Gateway authentication delegation, event-driven architecture with Kafka, real-time WebSocket communication, and distributed deployment on AWS infrastructure.
 
 I'll walk you through the complete end-to-end flow using the high-level design diagram, showing how requests flow through the system, how services discover and communicate with each other, and how real-time events are processed.
 
@@ -51,7 +50,7 @@ We have MySQL with Flyway migrations for persistent data, and Redis for geospati
 **AWS Infrastructure:**
 Everything runs on AWS - EC2 instances in a VPC with public/private subnets, managed RDS for MySQL, ElastiCache for Redis, and MSK for Kafka. Backend services are completely isolated in private subnets.
 
-Now let's see this working live..."
+Now let's see the live. demo.."
 ```
 
 
@@ -74,8 +73,9 @@ Here's our VPC with public and private subnets across two availability zones:
 
 Here are our EC2 instances:
 - Gateway instance: Public subnet, hosts API Gateway
-- Eureka instance: Public subnet, service discovery server  
-- Backend instance: Private subnet, runs all 5 backend services
+- Eureka instance: Public subnet, service discovery server
+- Websocket Client instance: Public subnet, hosts Driver WebSocket Client
+- Backend instance: Private subnet, runs all 5 backend services (Auth, Booking, Location, Socket, Review)
 
 Notice the backend instance has NO public IP - completely isolated.
 
@@ -96,11 +96,11 @@ All provisioned with Infrastructure as Code.
 
 ### **3.2 Service Discovery**
 
-**[Navigate to: Eureka Dashboard - http://eureka-public-ip:8761]**
+**[Navigate to: Eureka Dashboard - http://{{eureka_public_ip}}:8761]**
 
 **Script:**
 ```
-"Here's our Eureka service registry showing all registered services:
+"Here's our  Eureka service registry showing all registered services:
 
 - UBER-API-GATEWAY: 1 instance
 - UBER-AUTH-SERVICE: 1 instance  
@@ -138,7 +138,7 @@ This shows the Gateway delegating authentication to the Auth Service for JWT val
 ```
 "Let me register a new passenger using our API Gateway:
 
-POST http://gateway-public-ip:9001/api/v1/auth/signup
+POST http://{{gateway_public_ip}}:9001/api/v1/auth/signup
 
 [Show request body]
 {
@@ -148,6 +148,19 @@ POST http://gateway-public-ip:9001/api/v1/auth/signup
   "phoneNumber": "+1234567890",
   "role": "PASSENGER"
 }
+
+**Curl Command:**
+```bash
+curl -X POST http://{{gateway_public_ip}}:9001/api/v1/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "demo-passenger@uber.com",
+    "password": "SecurePass123",
+    "name": "Alice Demo",
+    "phoneNumber": "+1234567890",
+    "role": "PASSENGER"
+  }'
+```
 
 [Send request]
 
@@ -168,7 +181,18 @@ The Gateway discovered Auth Service via Eureka and routed the request.
 ```
 "Now let's sign in and get a JWT token:
 
-POST http://gateway-public-ip:9001/api/v1/auth/signin
+POST http://{{gateway_public_ip}}:9001/api/v1/auth/signin
+
+**Curl Command:**
+```bash
+curl -X POST http://{{gateway_public_ip}}:9001/api/v1/auth/signin \
+  -H "Content-Type: application/json" \
+  -c cookies.txt \
+  -d '{
+    "email": "demo-passenger@uber.com", 
+    "password": "SecurePass123"
+  }'
+```
 
 [Show request body]
 {
@@ -178,11 +202,19 @@ POST http://gateway-public-ip:9001/api/v1/auth/signin
 
 [Send request, save cookies]
 
-Great - 200 OK with Set-Cookie header containing JWT.
+Great - 200 OK with Set-Cookie header containing JWT token.
 
 Now here's the critical part - let me call a protected endpoint:
 
-POST http://gateway-public-ip:9001/api/v1/auth/validate
+POST http://{{gateway_public_ip}}:9001/api/v1/auth/validate
+
+**Curl Command:**
+```bash
+curl -X POST http://{{gateway_public_ip}}:9001/api/v1/auth/validate \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{"requiredRole": "PASSENGER"}'
+```
 
 [Point to Gateway logs in real-time]
 Watch the Gateway logs:
@@ -194,9 +226,7 @@ Watch the Gateway logs:
 And Auth Service logs:
 "INFO AuthController - Validated: email=demo-passenger@uber.com, role=PASSENGER"
 
-The Gateway forwards JWT validation requests to the Auth Service rather than 
-performing local validation. This implements the authentication delegation pattern, 
-centralizing authentication logic in a dedicated service.
+The Gateway forwards JWT validation requests to the Auth Service. This implements the authentication delegation pattern, centralizing authentication logic in a dedicated service.
 ```
 
 ---
@@ -209,31 +239,132 @@ centralizing authentication logic in a dedicated service.
 ```
 "Now let's test our Redis geospatial features for driver location tracking.
 
-I'll add three drivers at different locations in San Francisco:
+First, I need to register some drivers in the system:
+
+[Register Driver 1]
+POST http://{{gateway_public_ip}}:9001/api/v1/auth/signup
+{
+  "email": "driver1@uber.com",
+  "password": "DriverPass123",
+  "name": "John Driver",
+  "phoneNumber": "+1234567891",
+  "role": "DRIVER"
+}
+
+[Register Driver 2]  
+POST http://{{gateway_public_ip}}:9001/api/v1/auth/signup
+{
+  "email": "driver2@uber.com",
+  "password": "DriverPass123",
+  "name": "Jane Driver",
+  "phoneNumber": "+1234567892",
+  "role": "DRIVER"
+}
+
+[Register Driver 3]
+POST http://{{gateway_public_ip}}:9001/api/v1/auth/signup
+{
+  "email": "driver3@uber.com",
+  "password": "DriverPass123",
+  "name": "Mike Driver",
+  "phoneNumber": "+1234567893",
+  "role": "DRIVER"
+}
+
+**Driver Registration Curl Commands:**
+```bash
+# Register Driver 1
+curl -X POST http://{{gateway_public_ip}}:9001/api/v1/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "driver1@uber.com",
+    "password": "DriverPass123",
+    "name": "John Driver",
+    "phoneNumber": "+1234567891",
+    "role": "DRIVER"
+  }'
+
+# Register Driver 2
+curl -X POST http://{{gateway_public_ip}}:9001/api/v1/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "driver2@uber.com",
+    "password": "DriverPass123",
+    "name": "Jane Driver",
+    "phoneNumber": "+1234567892",
+    "role": "DRIVER"
+  }'
+
+# Register Driver 3
+curl -X POST http://{{gateway_public_ip}}:9001/api/v1/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "driver3@uber.com",
+    "password": "DriverPass123",
+    "name": "Mike Driver",
+    "phoneNumber": "+1234567893",
+    "role": "DRIVER"
+  }'
+```
+
+Great! Now I have three registered drivers. Let me add their locations at different positions in San Francisco:
 
 [Driver 1 - Downtown SF]
-POST http://gateway-public-ip:9001/api/v1/location/drivers
+POST http://{{gateway_public_ip}}:9001/api/v1/location/drivers
 {
   "driverId": 1,
   "latitude": 37.7749,
   "longitude": -122.4194
 }
 
-[Driver 2 - Nearby]  
-POST http://gateway-public-ip:9001/api/v1/location/drivers
+[Driver 2 - Nearby (within 5km)]  
+POST http://{{gateway_public_ip}}:9001/api/v1/location/drivers
 {
   "driverId": 2,
   "latitude": 37.7850,
-  "longitude": -122.4195  
+  "longitude": -122.4100  
 }
 
-[Driver 3 - Far away]
-POST http://gateway-public-ip:9001/api/v1/location/drivers
+[Driver 3 - Far away (outside 5km radius)]
+POST http://{{gateway_public_ip}}:9001/api/v1/location/drivers
 {
   "driverId": 3,
-  "latitude": 37.9000,
-  "longitude": -122.6000
+  "latitude": 37.8200,
+  "longitude": -122.3500
 }
+
+**Curl Commands:**
+```bash
+# Driver 1 - Downtown SF
+curl -X POST http://{{gateway_public_ip}}:9001/api/v1/location/drivers \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{
+    "driverId": 1,
+    "latitude": 37.7749,
+    "longitude": -122.4194
+  }'
+
+# Driver 2 - Nearby (within 5km)
+curl -X POST http://{{gateway_public_ip}}:9001/api/v1/location/drivers \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{
+    "driverId": 2,
+    "latitude": 37.7850,
+    "longitude": -122.4100
+  }'
+
+# Driver 3 - Far away (outside 5km radius)
+curl -X POST http://{{gateway_public_ip}}:9001/api/v1/location/drivers \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{
+    "driverId": 3,
+    "latitude": 37.8200,
+    "longitude": -122.3500
+  }'
+```
 
 [Point to Location Service logs]
 Location Service logs show: "DEBUG RedisLocationServiceImpl - Saved location for driver: 1 at (37.7749, -122.4194) [new]"
@@ -247,11 +378,22 @@ Redis is storing these as geospatial coordinates for ultra-fast queries.
 ```
 "Now let's search for nearby drivers using Redis GEORADIUS:
 
-POST http://gateway-public-ip:9001/api/v1/location/nearby/drivers
+POST http://{{gateway_public_ip}}:9001/api/v1/location/nearby/drivers
 {
   "latitude": 37.7749,
   "longitude": -122.4194
 }
+
+**Curl Command:**
+```bash
+curl -X POST http://{{gateway_public_ip}}:9001/api/v1/location/nearby/drivers \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{
+    "latitude": 37.7749,
+    "longitude": -122.4194
+  }'
+```
 
 [Send request]
 
@@ -266,10 +408,11 @@ Response shows:
 Notice driver 3 is NOT returned - it's too far away!
 
 [Point to Location Service logs]
-"INFO RedisLocationServiceImpl - Found 2 nearby drivers within 5.0 km of (37.7749, -122.4194)"
+"DEBUG RedisLocationServiceImpl - Found 2 drivers near location (37.7749, -122.4194) within 5.0 km"
 
 This Redis geospatial query executes in milliseconds and can handle 
-millions of driver locations.
+millions of driver locations. Notice how Driver 3 at (37.8200, -122.3500) 
+is automatically excluded - it's approximately 6.2km away, outside our 5km search radius.
 ```
 
 ---
@@ -293,13 +436,35 @@ booking flow with event-driven architecture:
 Watch how they orchestrate together..."
 ```
 
-### **6.2 Create Booking Request**
+### **6.2 Real-Time Driver Connection**
+
+**[Open: Driver WebSocket Client - http://{{websocket_client_public_ip}}:3000]**
 
 **Script:**
 ```
-"Let me create a ride booking:
+"Now let's see the real-time WebSocket communication before creating a booking.
 
-POST http://gateway-public-ip:9001/api/v1/bookings
+Here's our Driver Portal running on a dedicated EC2 instance - a full-stack client that authenticates 
+via the API Gateway and connects to WebSocket for real-time notifications.
+
+[Login as driver]
+Email: demo-driver@uber.com
+Password: driver123
+
+[Click "Go Online"]
+
+Perfect! The driver is now connected via WebSocket through the API Gateway and ready to receive ride requests.
+
+Now let's create a booking to trigger a real-time notification to this connected driver.
+```
+
+### **6.3 Create Booking with Real-Time Notifications**
+
+**Script:**
+```
+"Let me create a ride booking that will instantly notify our connected driver:
+
+POST http://{{gateway_public_ip}}:9001/api/v1/bookings
 {
   "passengerId": 1,
   "startLocation": {
@@ -312,9 +477,30 @@ POST http://gateway-public-ip:9001/api/v1/bookings
   }
 }
 
+**Curl Command:**
+```bash
+curl -X POST http://{{gateway_public_ip}}:9001/api/v1/bookings \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{
+    "passengerId": 1,
+    "startLocation": {
+      "latitude": 37.7749,
+      "longitude": -122.4194
+    },
+    "endLocation": {
+      "latitude": 37.7849, 
+      "longitude": -122.4094
+    }
+  }'
+```
+
 [Send request]
 
 Perfect - booking created with ID 42.
+
+[Point to driver client immediately]
+Look! Instantly, the driver receives the ride request with all booking details!
 
 Now watch the logs in sequence:
 
@@ -328,42 +514,13 @@ Now watch the logs in sequence:
 "INFO BookingServiceImpl - Booking created with ID: 42"
 
 [Point to Location Service logs - timestamp 10:30:15.250]
-"DEBUG RedisLocationServiceImpl - No drivers found near location (37.7749, -122.4194) within 5.0 km"
-"INFO RedisLocationServiceImpl - Found 2 nearby drivers within 5.0 km of (37.7749, -122.4194)"
-
-```
-
-### **6.3 Real-Time Driver Notifications**
-
-**[Open: Driver WebSocket Client - http://gateway-public-ip:3000]**
-
-**Script:**
-```
-"Now let's see the real-time WebSocket communication.
-
-Here's our Driver Portal - a full-stack client that authenticates 
-via the API Gateway and connects to WebSocket for real-time notifications.
-
-[Login as driver]
-Email: demo-driver@uber.com
-Password: driver123
-
-[Click "Go Online"]
-
-The driver is now connected via WebSocket through the API Gateway.
-
-Let me create another booking to trigger a notification:
-
-[Send booking request]
-
-[Point to driver client]
-Instantly, the driver receives the ride request with all details!
+"DEBUG RedisLocationServiceImpl - Found 2 drivers near location (37.7749, -122.4194) within 5.0 km"
 
 [Point to Socket Service logs]
 "INFO DriverRequestController - Broadcasting ride request to 2 drivers via WebSocket"
 "INFO DriverRequestController - Broadcast completed - 2 drivers notified"
 
-This is production-grade real-time communication with proper authentication.
+This demonstrates production-grade real-time communication with proper authentication and instant notifications.
 ```
 
 ### **6.4 Event-Driven Ride Acceptance**
@@ -433,7 +590,7 @@ Thank you so much for watching and have a nice day!"
 - [ ] AWS Console (VPC, EC2, RDS, ElastiCache, MSK)
 - [ ] Eureka Dashboard (http://eureka-ip:8761)
 - [ ] CloudWatch Log Groups (Gateway, Auth, Booking, Location, Socket)
-- [ ] Driver WebSocket Client (http://gateway-ip:3000)
+- [ ] Driver WebSocket Client (http://{{websocket_client_public_ip}}:3000)
 - [ ] Bruno/Postman with pre-configured requests
 
 **Test Data:**

@@ -1,0 +1,27 @@
+meta {
+  name: Passenger Signin API
+  type: http
+  seq: 3
+}
+
+post {
+  url: http://{{gateway_public_ip}}:9001/api/v1/auth/signin
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "demo-passenger@uber.com",
+    "password": "SecurePass123"
+  }
+}
+
+settings {
+  encodeUrl: false
+  timeout: 0
+}

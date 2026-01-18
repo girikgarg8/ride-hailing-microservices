@@ -1,0 +1,35 @@
+meta {
+  name: Create New Booking
+  type: http
+  seq: 11
+}
+
+post {
+  url: http://{{gateway_public_ip}}:9001/api/v1/bookings
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+  ~Cookie: JwtToken=eyJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE3Njg3NjMxOTEsImV4cCI6MTc2ODc2Njc5MSwic3ViIjoiZGVtby1wYXNzZW5nZXJAdWJlci5jb20ifQ.8t9mBKAaq9_FjWBObvuiaQ6WrebClwk9d7rZj_F4zGc; Path=/; Max-Age=3600; Expires=Sun, 18 Jan 2026 20:06:31 GMT; HttpOnly
+}
+
+body:json {
+  {
+    "passengerId": 1,
+    "startLocation": {
+      "latitude": 37.7749,
+      "longitude": -122.4194
+    },
+    "endLocation": {
+      "latitude": 37.7849,
+      "longitude": -122.4094
+    }
+  }
+}
+
+settings {
+  encodeUrl: false
+  timeout: 0
+}

@@ -1,0 +1,27 @@
+meta {
+  name: First Driver Signin API
+  type: http
+  seq: 6
+}
+
+post {
+  url: http://{{gateway_public_ip}}:9001/api/v1/auth/signin
+  body: json
+  auth: inherit
+}
+
+headers {
+  content-type: application/json
+}
+
+body:json {
+  {
+    "email": "driver1@uber.com",
+    "password": "DriverPass123"
+  }
+}
+
+settings {
+  encodeUrl: false
+  timeout: 0
+}

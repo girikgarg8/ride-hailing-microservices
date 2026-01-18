@@ -278,6 +278,56 @@ When discussing this in interviews:
 - **Vanilla JavaScript**: No framework dependencies
 - **Modern CSS**: Animations, flexbox, responsive design
 
+## 🚀 Deployment
+
+### **Local Development**
+
+```bash
+# Start the HTTP server
+./start-client.sh
+
+# Open browser
+open http://localhost:3000/index.html
+```
+
+### **AWS Deployment (Dedicated EC2 Instance)**
+
+The WebSocket client runs on its own dedicated EC2 instance in the public subnet for better architecture separation.
+
+#### **Option 1: Using Configuration Script (Recommended)**
+
+```bash
+# Configure for AWS deployment
+./configure-for-aws.sh <GATEWAY_PUBLIC_IP>
+
+# Example:
+./configure-for-aws.sh 54.123.45.67
+
+# Upload to dedicated Client EC2 instance
+scp -i uber-platform-key.pem -r . ec2-user@<CLIENT_PUBLIC_IP>:~/Uber-Driver-WebSocket-Client/
+
+# SSH to Client instance and start
+ssh -i uber-platform-key.pem ec2-user@<CLIENT_PUBLIC_IP>
+cd ~/Uber-Driver-WebSocket-Client && ./start-client.sh
+
+# Access in browser
+open http://<CLIENT_PUBLIC_IP>:3000/index.html
+```
+
+#### **Option 2: Manual Configuration**
+
+```bash
+# Update API Gateway URL in index.html
+sed -i 's/GATEWAY_PUBLIC_IP/<your-gateway-ip>/g' index.html
+
+# Upload to dedicated Client EC2 instance
+scp -i uber-platform-key.pem -r . ec2-user@<CLIENT_PUBLIC_IP>:~/Uber-Driver-WebSocket-Client/
+
+# SSH and start
+ssh -i uber-platform-key.pem ec2-user@<CLIENT_PUBLIC_IP>
+cd ~/Uber-Driver-WebSocket-Client && ./start-client.sh
+```
+
 ## 🎓 Learning Resources
 
 - [Spring Cloud Gateway WebSocket Support](https://docs.spring.io/spring-cloud-gateway/docs/current/reference/html/#websocket-routing-filter)
