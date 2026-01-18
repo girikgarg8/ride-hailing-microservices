@@ -1,236 +1,101 @@
 # 🚀 Uber Microservices Platform
 
-**Production-Grade Microservices Architecture | Local Development | AWS Deployment | Demo Ready**
+**Enterprise-Grade Microservices Architecture for Ride-Hailing System**
+
+A production-ready, scalable microservices platform demonstrating advanced backend engineering patterns including API Gateway authentication delegation, event-driven architecture, real-time communication, and AWS cloud deployment.
 
 ---
 
-## 📖 Single Source of Truth
+## 🏗️ High-Level Design
 
-**All documentation has been consolidated into one comprehensive guide:**
+![High-Level Design](./High_Level_Design.png)
 
-👉 **[AWS-DEPLOYMENT-GUIDE.md](./AWS-DEPLOYMENT-GUIDE.md)** 👈
+### **System Architecture Overview**
 
-This guide contains:
-- ✅ **Part 1: Local Development & Demo**
-  - Quick start instructions
-  - Complete demo guide (24-minute walkthrough)
-  - Automation scripts
-  - Architecture diagrams
-  - Testing commands
+This platform implements a sophisticated microservices architecture with the following key components:
 
-- ✅ **Part 2: AWS Production Deployment**
-  - Infrastructure setup (VPC, RDS, Redis, Kafka, EC2)
-  - Application deployment
-  - Production demo with CloudWatch logs
-  - Cleanup instructions
-  - Resume bullet points
+- **API Gateway** - Single entry point with authentication delegation
+- **Service Discovery** - Dynamic service resolution via Eureka
+- **Authentication Service** - Centralized JWT validation and user management
+- **Event-Driven Communication** - Asynchronous processing through Kafka
+- **Real-Time Updates** - WebSocket for instant driver notifications
+- **Geospatial Queries** - Redis-powered location-based services
+- **Database Persistence** - MySQL with automated migrations
 
----
+### **Core Microservices**
 
-## 🚀 Quick Start (Local Development)
-
-### Prerequisites
-- Java 17
-- MySQL (port 3306)
-- Redis (port 6379)
-- Kafka (port 9092)
-- Gradle
-
-### Option 1: Automated Start (Recommended)
-
-```bash
-# Make scripts executable (first time only)
-chmod +x start-all-services.sh stop-all-services.sh
-
-# Start all services
-./start-all-services.sh
-
-# When done
-./stop-all-services.sh
-```
-
-### Option 2: Manual Start
-
-See [AWS-DEPLOYMENT-GUIDE.md](./AWS-DEPLOYMENT-GUIDE.md#quick-start---local-development) for manual startup instructions.
+1. **API Gateway** - Request routing and authentication delegation
+2. **Service Discovery** - Eureka server for service registry
+3. **Auth Service** - JWT creation, validation, and user management
+4. **Entity Service** - Database migrations and shared data models
+5. **Booking Service** - Ride booking management with Kafka integration
+6. **Location Service** - Driver location tracking with Redis geospatial queries
+7. **Socket Service** - Real-time WebSocket communication and event publishing
+8. **Review Service** - Post-ride rating and review system
 
 ---
 
-## 🏗️ Architecture Overview
+## 🎯 Key Features & Capabilities
 
-### **Microservices (7 total):**
-1. **Uber-API-Gateway** (Port 9000) - Single entry point, JWT auth delegation
-2. **Uber-Service-Discovery** (Port 8761) - Eureka server
-3. **Uber-Auth-Service** (Port 9090) - JWT creation & validation
-4. **Uber-Booking-Service** (Port 8001) - Booking management + Kafka consumer
-5. **Uber-Location-Service** (Port 7070) - Redis geospatial queries
-6. **Uber-Socket-Service** (Port 3002) - WebSocket + Kafka producer
-7. **Uber-Review-Service** (Port 7272) - Reviews CRUD
+### **🔐 Enterprise Authentication & Security**
+- ✅ **JWT-based Authentication** with Auth Service as single source of truth
+- ✅ **Role-Based Access Control** for drivers and passengers with secure inter-service communication
 
-### **Key Technical Highlights:**
+### **📱 Production-Ready Business Features**
+- ✅ **User Registration & Authentication** - Driver and passenger onboarding with automated validation
+- ✅ **Real-Time Location Tracking** - Redis-powered geospatial queries for nearby driver search
+- ✅ **Intelligent Ride Booking** - Request creation with driver matching and status synchronization
+- ✅ **Live Driver Notifications** - WebSocket integration for instant ride request broadcasts
+- ✅ **Event-Driven Ride Flow** - Kafka-based asynchronous processing for ride acceptance
+- ✅ **Review & Rating System** - Complete post-ride feedback mechanism
 
-🔐 **Proper API Gateway Pattern**
-- Gateway delegates JWT validation to Auth Service (not local validation)
-- Auth Service is the single source of truth for authentication
-- Gateway calls Auth Service's `/validate` endpoint for every protected request
+### **⚡ Advanced Real-Time & Event Architecture**
+- ✅ **WebSocket Communication** - Instant driver notifications with STOMP protocol
+- ✅ **Event-Driven Architecture** - Kafka for guaranteed asynchronous message delivery
+- ✅ **Geospatial Capabilities** - Redis GEORADIUS for sub-second nearby driver queries
+- ✅ **Service Discovery & Load Balancing** - Dynamic service resolution with Eureka
 
-🌐 **Service Discovery**
-- Eureka enables dynamic service resolution
-- No hardcoded IPs or ports
-- Client-side load balancing
-
-📨 **Event-Driven Architecture**
-- Kafka for asynchronous communication
-- Socket Service → Booking Service decoupled via Kafka
-- Guaranteed message delivery
-
-⚡ **Real-Time Communication**
-- WebSocket for instant driver notifications
-- Redis GEORADIUS for sub-second nearby driver search
+### **🌐 Cloud-Native Enterprise Patterns**
+- ✅ **Scalable AWS Deployment** - Full infrastructure with VPC, RDS, ElastiCache, MSK
+- ✅ **Database Migration Strategy** - Flyway-based schema versioning and automated migrations
+- ✅ **Automated Service Management** - Health checks, monitoring, and environment configuration
+- ✅ **End-to-End Observability** - CloudWatch integration with comprehensive logging
 
 ---
 
-## 🎬 Demo Flow (24 minutes)
+## 🛠️ Technology Stack
 
-1. **Setup** (3 min) - Show Eureka dashboard with all services
-2. **Authentication** (5 min) - Signup → Signin → JWT validation (Gateway → Auth Service)
-3. **Location Service** (5 min) - Update driver locations, Redis GEORADIUS query
-4. **Booking Service** (7 min) - Create booking, inter-service communication
-5. **WebSocket** (10 min) - Real-time broadcast to drivers
-6. **Kafka Event Flow** (10 min) - Driver accepts ride, Kafka async processing
-7. **Review Service** (5 min) - Complete ride, leave review
+### **Backend Framework**
+- **Java 17** - Modern LTS with enhanced performance
+- **Spring Boot** - Production-grade application framework
+- **Spring Cloud Gateway** - API Gateway with advanced routing
+- **Spring Security** - Authentication and authorization
+- **Spring Data JPA** - Data persistence and ORM
+- **Spring WebSocket** - Real-time bidirectional communication
 
-**Full demo script with cURL commands:** [AWS-DEPLOYMENT-GUIDE.md](./AWS-DEPLOYMENT-GUIDE.md#complete-demo-guide)
+### **Data & Messaging**
+- **MySQL** - Primary relational database
+- **Redis** - In-memory caching and geospatial operations
+- **Apache Kafka** - Event streaming and asynchronous messaging
+- **Flyway** - Database migration and versioning
 
----
+### **Service Architecture**
+- **Netflix Eureka** - Service registry and discovery
+- **Spring Cloud LoadBalancer** - Client-side load balancing
+- **WebSocket (STOMP)** - Real-time messaging protocol
+- **Gradle** - Build automation and dependency management
 
-## 🎯 Technical Highlights
-
-✨ **Enterprise Microservices Patterns**
-- API Gateway delegates authentication (not local validation)
-- Single source of truth for JWT (Auth Service)
-- Service discovery with Eureka (no hardcoded endpoints)
-
-✨ **Production-Ready Architecture**
-- Event-driven with Kafka
-- Real-time with WebSocket
-- Geospatial queries with Redis
-- Centralized logging ready
-
-✨ **Cloud-Native Deployment**
-- VPC with public/private subnets
-- RDS, ElastiCache, MSK
-- ALB, NAT Gateway, CloudWatch
-- Security groups enforcing zero direct backend access
+### **Cloud Infrastructure (AWS)**
+- **Amazon EC2** - Scalable compute instances
+- **Amazon VPC** - Secure network isolation
+- **Amazon RDS** - Managed database service
+- **Amazon ElastiCache** - Managed in-memory cache
+- **Amazon MSK** - Managed streaming platform
+- **Application Load Balancer** - High-availability traffic distribution
+- **CloudWatch** - Comprehensive monitoring and logging
 
 ---
 
-## 📚 Documentation Structure
-
-```
-Microservices-Based Ride-Hailing Platform/
-├── README.md                          # This file (overview & quick start)
-├── AWS-DEPLOYMENT-GUIDE.md            # 📖 SINGLE SOURCE OF TRUTH
-│                                      #    - Local development guide
-│                                      #    - Complete demo walkthrough
-│                                      #    - AWS deployment instructions
-│                                      #    - Architecture diagrams
-│                                      #    - Resume bullet points
-│
-├── start-all-services.sh              # Automated startup script
-├── stop-all-services.sh               # Automated shutdown script
-│
-├── Uber-API-Gateway/                  # API Gateway (delegates auth to Auth Service)
-├── Uber-Service-Discovery/            # Eureka server
-├── Uber-Auth-Service/                 # JWT creation & validation
-├── Uber-Booking-Service/              # Booking management + Kafka consumer
-├── Uber-Location-Service/             # Redis geospatial
-├── Uber-Socket-Service/               # WebSocket + Kafka producer
-├── Uber-Review-Service/               # Reviews CRUD
-├── Uber-Entity-Service/               # Shared entities (dependency)
-│
-├── Uber-Driver-WebSocket-Client/      # Test client for WebSocket
-└── Uber-WebSocket-Demo-Client/        # Demo client for WebSocket
-```
-
+## 📚 Demo
+To be updated
 ---
-
-## 🔑 Key Architecture Decisions
-
-### **API Gateway Authentication Pattern**
-
-❌ **WRONG (Anti-pattern):**
-```
-Gateway validates JWT locally
-→ JWT logic duplicated in Gateway
-→ Changes require Gateway redeployment
-```
-
-✅ **CORRECT (Our Implementation):**
-```
-Gateway calls Auth Service /validate endpoint
-→ Auth Service is single source of truth
-→ JWT logic centralized in Auth Service
-→ Changes don't require Gateway redeployment
-```
-
-**Flow:**
-```
-Client → Gateway (extract JWT) 
-       → Auth Service /validate (validate JWT)
-       → Gateway (add X-User-Email header)
-       → Target Service (trusts Gateway)
-```
-
----
-
-## 🚀 Technologies Used
-
-- **Backend:** Spring Boot, Spring Cloud Gateway, Spring Security, Java 17
-- **Service Discovery:** Eureka
-- **Databases:** MySQL (RDS), Redis (ElastiCache)
-- **Messaging:** Apache Kafka (MSK)
-- **Real-Time:** WebSocket
-- **Cloud:** AWS (EC2, VPC, RDS, ElastiCache, MSK, ALB, NAT Gateway, CloudWatch)
-- **Build:** Gradle
-- **Migration:** Flyway
-
----
-
-## 📝 Resume-Ready Bullet Points
-
-See [AWS-DEPLOYMENT-GUIDE.md](./AWS-DEPLOYMENT-GUIDE.md#-resume-bullet-points) for polished resume bullet points highlighting:
-- API Gateway authentication delegation pattern
-- Event-driven architecture with Kafka
-- Microservices orchestration with Eureka
-- AWS production deployment
-- Real-time systems with WebSocket
-- Geospatial queries with Redis
-
----
-
-## 🎯 Next Steps
-
-1. **Local Demo:** Follow [Quick Start](#-quick-start-local-development) to run locally
-2. **Complete Demo:** Use [Demo Guide](./AWS-DEPLOYMENT-GUIDE.md#complete-demo-guide) for 24-minute walkthrough
-3. **AWS Deployment:** Follow [AWS Deployment](./AWS-DEPLOYMENT-GUIDE.md#part-2-aws-production-deployment) for production setup
-4. **Interview Prep:** Review [Architecture Decisions](./AWS-DEPLOYMENT-GUIDE.md#-architecture) and [Key Highlights](./AWS-DEPLOYMENT-GUIDE.md#-key-demo-highlights-to-emphasize)
-
----
-
-## 💡 Key Technical Achievements
-
-**Microservices Architecture:**
-- ✅ Built 7 production-grade microservices with proper separation of concerns
-- ✅ Implemented API Gateway authentication delegation pattern
-- ✅ Deployed to AWS with enterprise-grade security architecture
-- ✅ End-to-end observability with comprehensive logging
-
-**Advanced Patterns:**
-- ✅ Event-driven architecture using Apache Kafka
-- ✅ Real-time communication with WebSocket
-- ✅ Service discovery and load balancing with Eureka
-- ✅ Geospatial queries with Redis for location-based services
-
----
-
-**Ready to showcase your skills? Start with [AWS-DEPLOYMENT-GUIDE.md](./AWS-DEPLOYMENT-GUIDE.md)!** 🚀
